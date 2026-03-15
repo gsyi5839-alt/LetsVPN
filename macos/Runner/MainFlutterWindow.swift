@@ -1,5 +1,8 @@
 import Cocoa
 import FlutterMacOS
+import desktop_multi_window
+import shared_preferences_foundation
+import url_launcher_macos
 import window_manager
 import LaunchAtLogin
 
@@ -31,7 +34,28 @@ class MainFlutterWindow: NSWindow {
     //
     RegisterGeneratedPlugins(registry: flutterViewController)
 
+    FlutterMultiWindowPlugin.setOnWindowCreatedCallback { controller in
+      SharedPreferencesPlugin.register(with: controller.registrar(forPlugin: "SharedPreferencesPlugin"))
+      WindowManagerPlugin.register(with: controller.registrar(forPlugin: "WindowManagerPlugin"))
+      UrlLauncherPlugin.register(with: controller.registrar(forPlugin: "UrlLauncherPlugin"))
+
+      DispatchQueue.main.async {
+        self.configureDesktopSubWindowStyle(for: controller)
+      }
+    }
+
     super.awakeFromNib()
+  }
+
+  private func configureDesktopSubWindowStyle(for controller: FlutterViewController) {
+    guard let subWindow = controller.view.window else {
+      return
+    }
+
+    // Keep only one native macOS traffic-light button group.
+    subWindow.styleMask.remove(.fullSizeContentView)
+    subWindow.titlebarAppearsTransparent = false
+    subWindow.titleVisibility = .hidden
   }
 
   // window manager hidden at launch

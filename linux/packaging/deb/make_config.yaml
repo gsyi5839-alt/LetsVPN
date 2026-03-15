@@ -1,4 +1,4 @@
-display_name: Hiddify
+display_name: LetsVPN
 package_name: hiddify
 maintainer:
   name: hiddify
@@ -41,7 +41,7 @@ keywords:
   - Psiphon
   - OpenVPN
 
-generic_name: Hiddify
+generic_name: LetsVPN
 
 categories:
   - Network

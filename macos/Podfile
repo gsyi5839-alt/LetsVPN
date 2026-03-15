@@ -26,6 +26,22 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 
 flutter_macos_podfile_setup
 
+def disable_pods_module_verifier_settings(project)
+  project.build_configurations.each do |config|
+    config.build_settings['ENABLE_MODULE_VERIFIER'] = 'NO'
+    config.build_settings['CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER'] = 'NO'
+    config.build_settings.delete('MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS')
+  end
+
+  project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['ENABLE_MODULE_VERIFIER'] = 'NO'
+      config.build_settings['CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER'] = 'NO'
+      config.build_settings.delete('MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS')
+    end
+  end
+end
+
 target 'Runner' do
   use_frameworks!
   use_modular_headers!
@@ -53,6 +69,26 @@ post_install do |installer|
     flutter_additional_macos_build_settings(target)
     target.build_configurations.each do |config|
       config.build_settings[deployment_target_key] = minimum_deployment_target
+      config.build_settings['ENABLE_MODULE_VERIFIER'] = 'NO'
+      config.build_settings['CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER'] = 'NO'
+      config.build_settings['EXCLUDED_SOURCE_FILE_NAMES'] = '$(inherited) *.xcprivacy'
+      config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
+      config.build_settings['SWIFT_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
+      config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
+      config.build_settings['SWIFT_SUPPRESS_WARNINGS'] = 'YES'
     end
   end
+
+  disable_pods_module_verifier_settings(installer.pods_project)
+end
+
+post_integrate do |_installer|
+  pods_project_path = File.join(__dir__, 'Pods', 'Pods.xcodeproj')
+  project_file_path = File.join(pods_project_path, 'project.pbxproj')
+  next unless File.exist?(project_file_path)
+
+  require 'xcodeproj'
+  pods_project = Xcodeproj::Project.open(pods_project_path)
+  disable_pods_module_verifier_settings(pods_project)
+  pods_project.save
 end

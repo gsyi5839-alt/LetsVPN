@@ -224,6 +224,58 @@ class HiddifyCoreService with InfraLogger {
     });
   }
 
+  TaskEither<String, SystemProxyStatus> getSystemProxyStatus() {
+    return TaskEither(() async {
+      try {
+        final status = await core.bgClient.getSystemProxyStatus(Empty());
+        return right(status);
+      } on GrpcError catch (e) {
+        if (e.code == StatusCode.unavailable) {
+          try {
+            final status = await core.fgClient.getSystemProxyStatus(Empty());
+            return right(status);
+          } catch (fallbackError) {
+            return left("failed to get system proxy status: $fallbackError");
+          }
+        }
+        return left("failed to get system proxy status: $e");
+      } catch (e) {
+        return left("failed to get system proxy status: $e");
+      }
+    });
+  }
+
+  TaskEither<String, Unit> setSystemProxyEnabled(bool isEnabled) {
+    return TaskEither(() async {
+      try {
+        final response = await core.bgClient.setSystemProxyEnabled(
+          SetSystemProxyEnabledRequest(isEnabled: isEnabled),
+        );
+        if (response.code != ResponseCode.OK) {
+          return left("${response.code} ${response.message}");
+        }
+        return right(unit);
+      } on GrpcError catch (e) {
+        if (e.code == StatusCode.unavailable) {
+          try {
+            final response = await core.fgClient.setSystemProxyEnabled(
+              SetSystemProxyEnabledRequest(isEnabled: isEnabled),
+            );
+            if (response.code != ResponseCode.OK) {
+              return left("${response.code} ${response.message}");
+            }
+            return right(unit);
+          } catch (fallbackError) {
+            return left("failed to set system proxy enabled=$isEnabled: $fallbackError");
+          }
+        }
+        return left("failed to set system proxy enabled=$isEnabled: $e");
+      } catch (e) {
+        return left("failed to set system proxy enabled=$isEnabled: $e");
+      }
+    });
+  }
+
   TaskEither<String, Unit> restart(String path, String name, bool disableMemoryLimit) {
     return TaskEither(() async {
       loggy.debug("restarting");

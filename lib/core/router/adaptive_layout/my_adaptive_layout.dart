@@ -1,13 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/core/model/constants.dart';
 import 'package:hiddify/core/router/adaptive_layout/shell_route_action.dart';
-import 'package:hiddify/core/router/go_router/helper/active_breakpoint_notifier.dart';
-import 'package:hiddify/core/router/go_router/routing_config_notifier.dart';
-import 'package:hiddify/features/stats/widget/side_bar_stats_overview.dart';
+import 'package:hiddify/utils/platform_utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class MyAdaptiveLayout extends HookConsumerWidget {
@@ -25,68 +20,15 @@ class MyAdaptiveLayout extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = ref.watch(translationsProvider).requireValue;
-    // focus switch management
-    final primaryFocusHash = useState<int?>(null);
-    final navScopeNode = useFocusScopeNode();
-    useEffect(() {
-      bool handler(KeyEvent event) {
-        final arrows = isMobileBreakpoint ? KeyboardConst.verticalArrows : KeyboardConst.horizontalArrows;
-        if (!arrows.contains(event.logicalKey)) return false;
-        if (event is KeyDownEvent) {
-          primaryFocusHash.value = FocusManager.instance.primaryFocus.hashCode;
-        } else {
-          // focus node does not change => true.
-          if (primaryFocusHash.value == FocusManager.instance.primaryFocus.hashCode) {
-            if (branchesScope.values.any((node) => node.hasFocus)) {
-              navScopeNode.requestFocus();
-            } else if (navScopeNode.hasFocus) {
-              branchesScope[getNameOfBranch(isMobileBreakpoint, showProfilesAction, navigationShell.currentIndex)]
-                  ?.requestFocus();
-            }
-          }
-        }
-        return true;
-      }
-
-      HardwareKeyboard.instance.addHandler(handler);
-      return () {
-        HardwareKeyboard.instance.removeHandler(handler);
-      };
-    }, [isMobileBreakpoint, showProfilesAction, navigationShell.currentIndex]);
+    final showBottomNavigationBar = isMobileBreakpoint && !PlatformUtils.isDesktop;
     return Material(
       child: Scaffold(
-        body: isMobileBreakpoint
-            ? navigationShell
-            : Row(
-                children: [
-                  FocusScope(
-                    node: navScopeNode,
-                    child: NavigationRail(
-                      extended: Breakpoint(context).isDesktop(),
-                      destinations: _navRailDests(_actions(t, showProfilesAction, isMobileBreakpoint)),
-                      selectedIndex: navigationShell.currentIndex,
-                      onDestinationSelected: (index) => _onTap(context, index),
-                      trailing: Breakpoint(context).isDesktop()
-                          ? const Expanded(
-                              child: Align(
-                                alignment: Alignment.bottomCenter,
-                                child: SizedBox(width: 220, child: SideBarStatsOverview()),
-                              ),
-                            )
-                          : null,
-                    ),
-                  ),
-                  Expanded(child: navigationShell),
-                ],
-              ),
-        bottomNavigationBar: isMobileBreakpoint
-            ? FocusScope(
-                node: navScopeNode,
-                child: NavigationBar(
-                  selectedIndex: navigationShell.currentIndex <= 1 ? navigationShell.currentIndex : 0,
-                  destinations: _navDests(_actions(t, showProfilesAction, isMobileBreakpoint)),
-                  onDestinationSelected: (index) => _onTap(context, index),
-                ),
+        body: navigationShell,
+        bottomNavigationBar: showBottomNavigationBar
+            ? NavigationBar(
+                selectedIndex: navigationShell.currentIndex <= 1 ? navigationShell.currentIndex : 0,
+                destinations: _navDests(_actions(t, showProfilesAction, isMobileBreakpoint)),
+                onDestinationSelected: (index) => _onTap(context, index),
               )
             : null,
       ),
@@ -108,6 +50,4 @@ class MyAdaptiveLayout extends HookConsumerWidget {
 
   List<NavigationDestination> _navDests(List<ShellRouteAction> actions) =>
       actions.map((e) => NavigationDestination(icon: Icon(e.icon), label: e.title)).toList();
-  List<NavigationRailDestination> _navRailDests(List<ShellRouteAction> actions) =>
-      actions.map((e) => NavigationRailDestination(icon: Icon(e.icon), label: Text(e.title))).toList();
 }

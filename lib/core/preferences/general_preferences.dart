@@ -100,6 +100,12 @@ abstract class Preferences {
 
   static final autoCheckIp = PreferencesNotifier.create<bool, bool>("auto_check_ip", true);
 
+  static final selectedCountryIndex = PreferencesNotifier.create<int, int>(
+    "selected_country_index",
+    0,
+    validator: (value) => value >= 0,
+  );
+
   static final startedByUser = PreferencesNotifier.create<bool, bool>("started_by_user", false);
 
   static final storeReviewedByUser = PreferencesNotifier.create<bool, bool>("store_reviewed_by_user", false);

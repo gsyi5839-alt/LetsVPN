@@ -7,7 +7,11 @@ import 'package:hiddify/core/router/go_router/helper/active_breakpoint_notifier.
 import 'package:hiddify/core/router/go_router/helper/custom_transition.dart';
 import 'package:hiddify/core/router/go_router/refresh_listenable.dart';
 import 'package:hiddify/features/about/widget/about_page.dart';
+import 'package:hiddify/features/home/widget/free_membership_page.dart';
 import 'package:hiddify/features/home/widget/home_page.dart';
+import 'package:hiddify/features/home/widget/messages_page.dart';
+import 'package:hiddify/features/home/widget/referral_page.dart';
+import 'package:hiddify/features/home/widget/splash_page.dart';
 import 'package:hiddify/features/intro/widget/intro_page.dart';
 import 'package:hiddify/features/log/overview/logs_page.dart';
 import 'package:hiddify/features/per_app_proxy/overview/per_app_proxy_page.dart';
@@ -23,6 +27,7 @@ import 'package:hiddify/features/settings/overview/sections/tls_tricks_page.dart
 import 'package:hiddify/features/settings/overview/sections/warp_options_page.dart';
 import 'package:hiddify/features/settings/overview/settings_page.dart';
 import 'package:hiddify/utils/utils.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'routing_config_notifier.g.dart';
@@ -38,8 +43,13 @@ final branchesScope = <String, FocusScopeNode>{
 
 // when the routing config is not yet initialized, this config is used
 final loadingConfig = RoutingConfig(
-  routes: <RouteBase>[GoRoute(path: '/home', builder: (context, state) => const Material())],
+  routes: <RouteBase>[GoRoute(path: '/home', builder: (context, state) => const SplashPage())],
 );
+
+// 强制显示 splash 页面至少 3 秒
+final _splashTimerProvider = FutureProvider<void>((ref) async {
+  await Future.delayed(const Duration(seconds: 3));
+});
 
 String getNameOfBranch(bool isMobileBreakpoint, bool showProfilesAction, int index) => isMobileBreakpoint
     ? ['home', 'settings'][index]
@@ -53,6 +63,10 @@ int getIndexOfBranch(bool isMobileBreakpoint, bool showProfilesAction, String na
 class RoutingConfigNotifier extends _$RoutingConfigNotifier {
   @override
   RoutingConfig build() {
+    // splash 计时器未完成前，持续显示加载页
+    final splashTimer = ref.watch(_splashTimerProvider);
+    if (splashTimer is! AsyncData) return loadingConfig;
+
     final isMobileBreakpoint = ref.watch(isMobileBreakpointProvider);
     final bool showProfilesAction;
     if (isMobileBreakpoint == true) {
@@ -113,6 +127,26 @@ class RoutingConfigNotifier extends _$RoutingConfigNotifier {
                       pageBuilder: (_, state) =>
                           customTransition(TransitionType.fade, state.pageKey, const ProxiesOverviewPage()),
                     ),
+                    if (!isMobileBreakpoint) ...[
+                      GoRoute(
+                        name: 'referral',
+                        path: '/referral',
+                        pageBuilder: (_, state) =>
+                            customTransition(TransitionType.fade, state.pageKey, const ReferralPage()),
+                      ),
+                      GoRoute(
+                        name: 'freeMembership',
+                        path: '/free-membership',
+                        pageBuilder: (_, state) =>
+                            customTransition(TransitionType.fade, state.pageKey, const FreeMembershipPage()),
+                      ),
+                      GoRoute(
+                        name: 'messages',
+                        path: '/messages',
+                        pageBuilder: (_, state) =>
+                            customTransition(TransitionType.fade, state.pageKey, const MessagesPage()),
+                      ),
+                    ],
                     if (isMobileBreakpoint)
                       GoRoute(
                         name: 'profileDetails',

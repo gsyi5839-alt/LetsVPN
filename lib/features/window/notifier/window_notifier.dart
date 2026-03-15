@@ -12,8 +12,8 @@ import 'package:window_manager/window_manager.dart';
 
 part 'window_notifier.g.dart';
 
-const minimumWindowSize = Size(368, 568);
-const defaultWindowSize = Size(868, 668);
+const minimumWindowSize = Size(300, 500);
+const defaultWindowSize = Size(300, 500);
 
 @Riverpod(keepAlive: true)
 class WindowNotifier extends _$WindowNotifier with AppLogger {
@@ -46,26 +46,21 @@ class WindowNotifier extends _$WindowNotifier with AppLogger {
   Future<void> initWindowState() async {
     final isMaximized = ref.read(Preferences.windowMaximized);
     loggy.debug("window state. maximized: $isMaximized");
-    final size = ref.read(Preferences.windowSize);
-    loggy.debug("window state. size: $size");
     final position = ref.read(Preferences.windowPosition);
-    final isWindowVisible = position != null && await checkWindowVisivility(position, size);
+    final isWindowVisible = position != null && await checkWindowVisivility(position, defaultWindowSize);
     loggy.debug("window state. position: ${isWindowVisible ? position : "centered"}");
     final silentStart = ref.read(Preferences.silentStart);
     loggy.debug("window state. silent start: ${silentStart ? "Enabled" : "Disabled"}");
 
+    // 启动时使用 300x500 加载页尺寸
     await windowManager.waitUntilReadyToShow(
-      WindowOptions(size: size, center: !isWindowVisible, minimumSize: minimumWindowSize),
+      WindowOptions(size: defaultWindowSize, center: !isWindowVisible, minimumSize: minimumWindowSize),
     );
     if (isWindowVisible) {
       await windowManager.setPosition(position);
       loggy.debug("restoring window to position: $position");
     } else {
       loggy.debug("no previous position found, centering window");
-    }
-    if (isMaximized) {
-      await windowManager.maximize();
-      loggy.debug("restoring window to maximized state");
     }
     if (!silentStart) {
       await ref.read(windowNotifierProvider.notifier).show(focus: false);

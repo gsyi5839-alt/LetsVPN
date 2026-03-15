@@ -52,7 +52,7 @@ install_integration() {
     cat > "$TARGET_DESKTOP" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Hiddify
+Name=LetsVPN
 Exec="$APPIMAGE"
 Icon=hiddify
 Terminal=false
