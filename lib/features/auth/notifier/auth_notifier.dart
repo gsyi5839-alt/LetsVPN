@@ -9,9 +9,9 @@ import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/model/profile_sort_enum.dart';
 import 'package:hiddify/features/profile/notifier/active_profile_notifier.dart';
 import 'package:hiddify/utils/custom_loggers.dart';
+import 'package:hiddify/utils/uri_utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 /// AuthApiService 单例 Provider
 final authApiServiceProvider = Provider<AuthApiService>((ref) => AuthApiService());
@@ -134,9 +134,9 @@ class AuthNotifier extends StateNotifier<AuthState> with InfraLogger {
         throw const AuthException('登录链接无效，请重试');
       }
 
-      final opened = await launchUrl(loginUri, mode: LaunchMode.externalApplication);
+      final opened = await UriUtils.tryLaunch(loginUri);
       if (!opened) {
-        throw const AuthException('无法打开浏览器，请检查系统默认浏览器设置');
+        throw AuthException('无法自动打开浏览器，请手动访问：${deviceAuthInfo.loginUrl}');
       }
 
       final authorizationDeadline = DateTime.now().add(Duration(seconds: deviceAuthInfo.expiresIn));
@@ -166,7 +166,9 @@ class AuthNotifier extends StateNotifier<AuthState> with InfraLogger {
       return false;
     } on Exception catch (error) {
       loggy.error('browser auth error', error);
-      state = state.copyWith(isLoading: false, error: '浏览器授权失败，请稍后重试');
+      final detail = error.toString().replaceFirst('Exception: ', '').trim();
+      final message = detail.isEmpty ? '浏览器授权失败，请稍后重试' : '浏览器授权失败：$detail';
+      state = state.copyWith(isLoading: false, error: message);
       return false;
     }
   }
@@ -185,10 +187,7 @@ class AuthNotifier extends StateNotifier<AuthState> with InfraLogger {
   /// 登录/注册成功后，将 singbox 订阅 URL 添加为 Profile
   Future<void> _addSubscriptionProfile(AuthResult result) async {
     try {
-      final profileEnsured = await _ensureSubscriptionProfile(
-        token: result.token,
-        account: result.user.account,
-      );
+      final profileEnsured = await _ensureSubscriptionProfile(token: result.token, account: result.user.account);
       if (!profileEnsured) {
         loggy.warning('failed to add subscription profile for current account');
       }
@@ -232,10 +231,7 @@ class AuthNotifier extends StateNotifier<AuthState> with InfraLogger {
       userOverride: userOverride,
     );
     if (remoteUpsertSuccess) {
-      await _preferRemoteProfileAsActive(
-        profileRepository: profileRepository,
-        subscribeUrl: subscribeUrl,
-      );
+      await _preferRemoteProfileAsActive(profileRepository: profileRepository, subscribeUrl: subscribeUrl);
       return true;
     }
 
@@ -246,10 +242,7 @@ class AuthNotifier extends StateNotifier<AuthState> with InfraLogger {
       userOverride: userOverride,
     );
     if (localSingboxImportSuccess) {
-      await _preferRemoteProfileAsActive(
-        profileRepository: profileRepository,
-        subscribeUrl: subscribeUrl,
-      );
+      await _preferRemoteProfileAsActive(profileRepository: profileRepository, subscribeUrl: subscribeUrl);
       return true;
     }
 
@@ -260,10 +253,7 @@ class AuthNotifier extends StateNotifier<AuthState> with InfraLogger {
       userOverride: userOverride,
     );
     if (v2rayLocalImportSuccess) {
-      await _preferRemoteProfileAsActive(
-        profileRepository: profileRepository,
-        subscribeUrl: subscribeUrl,
-      );
+      await _preferRemoteProfileAsActive(profileRepository: profileRepository, subscribeUrl: subscribeUrl);
     }
     return v2rayLocalImportSuccess;
   }
@@ -273,10 +263,9 @@ class AuthNotifier extends StateNotifier<AuthState> with InfraLogger {
     required String subscribeUrl,
   }) async {
     try {
-      final profilesEither = await profileRepository.watchAll(
-        sort: ProfilesSort.lastUpdate,
-        sortMode: SortMode.descending,
-      ).first;
+      final profilesEither = await profileRepository
+          .watchAll(sort: ProfilesSort.lastUpdate, sortMode: SortMode.descending)
+          .first;
       final profiles = profilesEither.getOrElse((_) => <ProfileEntity>[]);
 
       RemoteProfileEntity? matchedRemoteProfile;
@@ -304,11 +293,14 @@ class AuthNotifier extends StateNotifier<AuthState> with InfraLogger {
       }
 
       final setActiveResult = await profileRepository.setAsActive(matchedRemoteProfile.id).run();
-      setActiveResult.match((failure) {
-        loggy.warning('failed to set remote profile as active after import', failure);
-      }, (_) {
-        _ref.invalidate(activeProfileProvider);
-      });
+      setActiveResult.match(
+        (failure) {
+          loggy.warning('failed to set remote profile as active after import', failure);
+        },
+        (_) {
+          _ref.invalidate(activeProfileProvider);
+        },
+      );
     } catch (error, stackTrace) {
       loggy.warning('failed to prefer remote profile as active', error, stackTrace);
     }
@@ -419,8 +411,7 @@ class AuthNotifier extends StateNotifier<AuthState> with InfraLogger {
 
         final transport = outbound['transport'];
         final shouldRemoveTcpTransport =
-            (transport is String && transport == 'tcp') ||
-            (transport is Map && transport['type'] == 'tcp');
+            (transport is String && transport == 'tcp') || (transport is Map && transport['type'] == 'tcp');
 
         if (shouldRemoveTcpTransport) {
           outbound.remove('transport');
@@ -429,7 +420,9 @@ class AuthNotifier extends StateNotifier<AuthState> with InfraLogger {
       }
 
       if (changedOutboundCount > 0) {
-        loggy.info('normalized sing-box subscription for compatibility, removed tcp transport from $changedOutboundCount outbounds');
+        loggy.info(
+          'normalized sing-box subscription for compatibility, removed tcp transport from $changedOutboundCount outbounds',
+        );
       }
       return jsonEncode(decodedJson);
     } catch (_) {

@@ -50,30 +50,17 @@ Future<bool> runDesktopSubWindowIfNeeded({required List<String> args, required E
       return true;
     }
 
-    _runSubWindowFallbackApp(
-      title: '窗口加载失败',
-      message: '未识别的子窗口类型: ${windowType ?? 'null'}',
-    );
+    _runSubWindowFallbackApp(title: '窗口加载失败', message: '未识别的子窗口类型: ${windowType ?? 'null'}');
   } catch (error, stackTrace) {
     debugPrint('desktop sub window init failed: $error');
     debugPrint('$stackTrace');
-    _runSubWindowFallbackApp(
-      title: '窗口加载失败',
-      message: '登录窗口初始化异常，请关闭后重试。',
-      details: '$error',
-    );
+    _runSubWindowFallbackApp(title: '窗口加载失败', message: '登录窗口初始化异常，请关闭后重试。', details: '$error');
   }
   return true;
 }
 
-Future<ProviderContainer> _createDesktopSubWindowContainer({
-  required Environment environment,
-}) async {
-  final container = ProviderContainer(
-    overrides: [
-      environmentProvider.overrideWithValue(environment),
-    ],
-  );
+Future<ProviderContainer> _createDesktopSubWindowContainer({required Environment environment}) async {
+  final container = ProviderContainer(overrides: [environmentProvider.overrideWithValue(environment)]);
   await container.read(sharedPreferencesProvider.future);
   return container;
 }
@@ -99,11 +86,7 @@ Map<String, dynamic> _decodeWindowArguments(String? rawArguments) {
   return const {};
 }
 
-void _runSubWindowFallbackApp({
-  required String title,
-  required String message,
-  String? details,
-}) {
+void _runSubWindowFallbackApp({required String title, required String message, String? details}) {
   runApp(
     MaterialApp(
       debugShowCheckedModeBanner: false,

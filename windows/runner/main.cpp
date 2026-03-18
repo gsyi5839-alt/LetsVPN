@@ -7,6 +7,13 @@
 #include "app_links/app_links_plugin_c_api.h"
 // #include <protocol_handler_windows/protocol_handler_windows_plugin_c_api.h>
 
+namespace
+{
+constexpr wchar_t kMainWindowTitle[] = L"Hiddify";
+constexpr wchar_t kDisplayWindowTitle[] = L"LetsVPN";
+constexpr wchar_t kSingleInstanceMutex[] = L"HiddifyMutex";
+} // namespace
+
 bool SendAppLinkToInstance(const std::wstring &title)
 {
   // Find our exact window
@@ -51,13 +58,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   // Replace "example" with the generated title found as parameter of `window.Create` in this file.
   // You may ignore the result if you need to create another window.
-  if (SendAppLinkToInstance(L"Hiddify"))
+  if (SendAppLinkToInstance(kMainWindowTitle) || SendAppLinkToInstance(kDisplayWindowTitle))
   {
     return EXIT_SUCCESS;
   }
 
-  HANDLE hMutexInstance = CreateMutex(NULL, TRUE, L"HiddifyMutex");
-  HWND handle = FindWindowA(NULL, "Hiddify");
+  HANDLE hMutexInstance = CreateMutex(NULL, TRUE, kSingleInstanceMutex);
 
   if (GetLastError() == ERROR_ALREADY_EXISTS)
   {
@@ -65,15 +71,46 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     std::vector<std::string> command_line_arguments = GetCommandLineArguments();
     project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
     FlutterWindow window(project);
-    if (window.SendAppLinkToInstance(L"Hiddify"))
+    if (window.SendAppLinkToInstance(kMainWindowTitle) || window.SendAppLinkToInstance(kDisplayWindowTitle))
     {
-      return false;
+      if (hMutexInstance != nullptr)
+      {
+        CloseHandle(hMutexInstance);
+      }
+      return EXIT_SUCCESS;
     }
 
-    WINDOWPLACEMENT place = {sizeof(WINDOWPLACEMENT)};
-    GetWindowPlacement(handle, &place);
-    ShowWindow(handle, SW_NORMAL);
-    return 0;
+    HWND handle = FindWindow(L"FLUTTER_RUNNER_WIN32_WINDOW", kMainWindowTitle);
+    if (handle == nullptr)
+    {
+      handle = FindWindowW(nullptr, kMainWindowTitle);
+    }
+    if (handle == nullptr)
+    {
+      handle = FindWindowW(nullptr, kDisplayWindowTitle);
+    }
+
+    if (handle != nullptr)
+    {
+      WINDOWPLACEMENT place = {sizeof(WINDOWPLACEMENT)};
+      GetWindowPlacement(handle, &place);
+      ShowWindow(handle, SW_NORMAL);
+      SetForegroundWindow(handle);
+    }
+    else
+    {
+      MessageBoxW(
+          nullptr,
+          L"LetsVPN seems already running in background.\nPlease open it from system tray, or end the existing process and try again.",
+          L"LetsVPN",
+          MB_OK | MB_ICONINFORMATION);
+    }
+
+    if (hMutexInstance != nullptr)
+    {
+      CloseHandle(hMutexInstance);
+    }
+    return EXIT_SUCCESS;
   }
 
   // Attach to console when present (e.g., 'flutter run') or create a
@@ -97,7 +134,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"Hiddify", origin, size))
+  if (!window.Create(kMainWindowTitle, origin, size))
   {
     return EXIT_FAILURE;
   }
@@ -111,6 +148,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   }
 
   ::CoUninitialize();
-  ReleaseMutex(hMutexInstance);
+  if (hMutexInstance != nullptr)
+  {
+    ReleaseMutex(hMutexInstance);
+    CloseHandle(hMutexInstance);
+  }
   return EXIT_SUCCESS;
 }

@@ -18,6 +18,11 @@ namespace
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
 #endif
 
+// Disable rounded corners on Windows 11+
+#ifndef DWMWA_WINDOW_CORNER_PREFERENCE
+#define DWMWA_WINDOW_CORNER_PREFERENCE 33
+#endif
+
   constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 
   /// Registry key for app theme preference.
@@ -168,6 +173,11 @@ bool Win32Window::Create(const std::wstring &title,
   }
 
   UpdateTheme(window);
+
+  // Remove rounded corners (Windows 11)
+  DWORD corner_preference = 1; // DWMWCP_DONOTROUND
+  DwmSetWindowAttribute(window, DWMWA_WINDOW_CORNER_PREFERENCE,
+                        &corner_preference, sizeof(corner_preference));
 
   return OnCreate();
 }

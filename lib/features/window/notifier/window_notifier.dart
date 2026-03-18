@@ -47,15 +47,25 @@ class WindowNotifier extends _$WindowNotifier with AppLogger {
     final isMaximized = ref.read(Preferences.windowMaximized);
     loggy.debug("window state. maximized: $isMaximized");
     final position = ref.read(Preferences.windowPosition);
-    final isWindowVisible = position != null && await checkWindowVisivility(position, defaultWindowSize);
-    loggy.debug("window state. position: ${isWindowVisible ? position : "centered"}");
+    final splashSize = PlatformUtils.isWindows ? const Size(418, 719) : defaultWindowSize;
+    final isWindowVisible = position != null && await checkWindowVisivility(position, splashSize);
+    loggy.debug("window state. position: ${isWindowVisible ? position : 'centered'}");
     final silentStart = ref.read(Preferences.silentStart);
-    loggy.debug("window state. silent start: ${silentStart ? "Enabled" : "Disabled"}");
+    loggy.debug("window state. silent start: ${silentStart ? 'Enabled' : 'Disabled'}");
 
-    // 启动时使用 300x500 加载页尺寸
+    // Windows 启动页 418x719，其他平台保持默认尺寸
     await windowManager.waitUntilReadyToShow(
-      WindowOptions(size: defaultWindowSize, center: !isWindowVisible, minimumSize: minimumWindowSize),
+      WindowOptions(
+        size: splashSize,
+        center: !isWindowVisible,
+        minimumSize: PlatformUtils.isWindows ? const Size(418, 719) : minimumWindowSize,
+        titleBarStyle: PlatformUtils.isWindows ? TitleBarStyle.hidden : TitleBarStyle.normal,
+      ),
     );
+    // Windows 上额外显式设置，确保原生标题栏被彻底隐藏
+    if (PlatformUtils.isWindows) {
+      await windowManager.setTitleBarStyle(TitleBarStyle.hidden, windowButtonVisibility: false);
+    }
     if (isWindowVisible) {
       await windowManager.setPosition(position);
       loggy.debug("restoring window to position: $position");

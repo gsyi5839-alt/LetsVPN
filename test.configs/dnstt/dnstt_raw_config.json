@@ -8,8 +8,7 @@
       "domain": "yourdomain",
       "resolvers": [
         "8.8.8.8:53",
-        "8.8.4.4:53",
-//add more dns server
+        "8.8.4.4:53"
       ],
       "tunnel_per_resolver": 40,
       "udp_over_tcp": true

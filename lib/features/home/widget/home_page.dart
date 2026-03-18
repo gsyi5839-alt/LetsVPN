@@ -346,11 +346,13 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    const windowsDesignSize = Size(943, 709);
     final appInfo = ref.watch(appInfoProvider).requireValue;
     final authState = ref.watch(authNotifierProvider);
     final activeProfile = ref.watch(activeProfileProvider).valueOrNull;
     final connectionState = ref.watch(connectionNotifierProvider).valueOrNull ?? const Disconnected();
     final selectedSection = useState(_WindowsMenuSection.home);
+    final showWelcomeNotification = useState(true);
 
     final selectedCountryIndex = (ref.watch(Preferences.selectedCountryIndex).clamp(0, _kCountries.length - 1)) as int;
     final selectedCountryName = _kCountries[selectedCountryIndex].$2;
@@ -367,7 +369,7 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
         ? remainMinutes.clamp(0, 9999).toString().padLeft(4, '0').split('')
         : const ['0', '0', '0', '0'];
     final memberHeaderTitle = hasFutureExpireAt ? '会员剩余时长(分钟)' : '会员已过期，剩余时长(分钟)';
-    final memberExpireText = hasFutureExpireAt ? _formatDateTimeValue(expireAt!) : '不限时';
+    final memberExpireText = expireAt == null ? '不限时' : _formatDateTimeValue(expireAt);
 
     final isDisconnected = connectionState is Disconnected || connectionState is Disconnecting;
     final statusText = switch (connectionState) {
@@ -382,27 +384,37 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
     final hasAccountName = accountName != null && accountName.isNotEmpty;
     final accountDisplayName = authState.isLoggedIn ? (hasAccountName ? accountName : '已登录账户') : '未登录账户';
     final accountId = authState.uuid?.trim().isNotEmpty == true ? authState.uuid!.trim() : '441337052';
+    final membershipTagText = hasFutureExpireAt ? '会员中' : '已过期';
+    final membershipTagTextColor = hasFutureExpireAt ? const Color(0xFF1F69C9) : const Color(0xFF9BA5AF);
+    final membershipTagBackground = hasFutureExpireAt ? const Color(0xFFE9F1FF) : Colors.white;
     final localeDropdownValue =
         persistedLocale != null && AppLocale.values.any((locale) => locale.name == persistedLocale)
         ? persistedLocale
         : 'system';
 
+    useEffect(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (await windowManager.isMaximized()) {
+          await windowManager.unmaximize();
+        }
+        await windowManager.setResizable(false);
+        await windowManager.setMinimumSize(windowsDesignSize);
+        await windowManager.setMaximumSize(windowsDesignSize);
+        await windowManager.setSize(windowsDesignSize);
+        await windowManager.center();
+      });
+      return null;
+    }, const []);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFDCE2E8),
+      backgroundColor: const Color(0xFFEFF3F7),
       body: SafeArea(
         child: Column(
           children: [
             _WindowsTitleBar(
               title: 'LetsVPN (ID: $accountId )',
-              onToggleMenu: () {},
+              accountId: accountId,
               onMinimize: () async => await windowManager.minimize(),
-              onToggleMaximize: () async {
-                if (await windowManager.isMaximized()) {
-                  await windowManager.unmaximize();
-                } else {
-                  await windowManager.maximize();
-                }
-              },
               onClose: () async => await ref.read(windowNotifierProvider.notifier).exit(),
             ),
             Expanded(
@@ -410,11 +422,12 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
                 children: [
                   Container(
                     width: 246,
-                    color: const Color(0xFFB9C4CE),
+                    color: const Color(0xFFC7D0D9),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Padding(
+                        Container(
+                          color: const Color(0xFFB8C3CE),
                           padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -426,10 +439,10 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
                                     height: 72,
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
-                                      border: Border.all(color: const Color(0xFF8D98A4), width: 4),
-                                      color: const Color(0xFFCFD6DD),
+                                      color: const Color(0xFFD6DDE4),
+                                      border: Border.all(color: const Color(0xFF9AA6B1), width: 2),
                                     ),
-                                    child: const Icon(Icons.person, size: 50, color: Color(0xFF9AA4AE)),
+                                    child: const Icon(Icons.person, size: 46, color: Color(0xFF98A5B0)),
                                   ),
                                   const Gap(14),
                                   Expanded(
@@ -443,26 +456,26 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
                                           style: const TextStyle(
                                             fontSize: 34 / 1.6,
                                             fontWeight: FontWeight.w700,
-                                            color: Color(0xFF1F2328),
+                                            color: Color(0xFF1F252C),
                                           ),
                                         ),
-                                        const Gap(6),
+                                        const Gap(5),
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                                           decoration: BoxDecoration(
                                             borderRadius: BorderRadius.circular(999),
-                                            color: Colors.white,
+                                            color: membershipTagBackground,
                                           ),
-                                          child: const Row(
+                                          child: Row(
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
-                                              Icon(Icons.diamond_rounded, size: 13, color: Color(0xFF9BA5AF)),
-                                              Gap(4),
+                                              Icon(Icons.diamond_rounded, size: 13, color: membershipTagTextColor),
+                                              const Gap(4),
                                               Text(
-                                                '已过期',
+                                                membershipTagText,
                                                 style: TextStyle(
                                                   fontSize: 11,
-                                                  color: Color(0xFF9BA5AF),
+                                                  color: membershipTagTextColor,
                                                   fontWeight: FontWeight.w700,
                                                 ),
                                               ),
@@ -474,19 +487,19 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
                                   ),
                                 ],
                               ),
-                              const Gap(12),
+                              const Gap(14),
                               Text(
                                 '到期时间: $memberExpireText',
                                 style: const TextStyle(
-                                  color: Color(0xFF1F2328),
-                                  fontSize: 13 / 1.6 * 1.4,
-                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF2C333A),
+                                  fontSize: 20 / 1.4,
+                                  fontWeight: FontWeight.w400,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        const Divider(height: 1, color: Color(0x44FFFFFF)),
+                        const Divider(height: 1, color: Color(0x3394A1AF)),
                         _WindowsSidebarItem(
                           icon: Icons.home_outlined,
                           title: '首页',
@@ -537,33 +550,30 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
                         ),
                         const Spacer(),
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 36),
+                          padding: const EdgeInsets.symmetric(horizontal: 40),
                           child: SizedBox(
                             height: 38,
                             child: FilledButton(
                               onPressed: () => UriUtils.tryLaunch(Uri.parse('https://www.palyps.com/account')),
                               style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFF1F69C9),
+                                backgroundColor: const Color(0xFF1064D1),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
                               ),
-                              child: const Text(
-                                '续费会员',
-                                style: TextStyle(fontSize: 32 / 1.6, fontWeight: FontWeight.w700),
-                              ),
+                              child: const Text('续费会员', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white)),
                             ),
                           ),
                         ),
                         const Gap(14),
                         Padding(
-                          padding: const EdgeInsets.fromLTRB(56, 0, 56, 20),
+                          padding: const EdgeInsets.fromLTRB(52, 0, 52, 20),
                           child: Row(
                             children: [
                               Text(
                                 '版本号： ${appInfo.presentVersion}',
-                                style: const TextStyle(color: Color(0xFF3A4148), fontSize: 14),
+                                style: const TextStyle(color: Color(0xFF2F3A45), fontSize: 13),
                               ),
                               const Spacer(),
-                              const Icon(Icons.refresh_rounded, size: 19, color: Color(0xFF3A4148)),
+                              const Icon(Icons.refresh_rounded, size: 18, color: Color(0xFF2F3A45)),
                             ],
                           ),
                         ),
@@ -581,6 +591,8 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
                           statusText: statusText,
                           selectedCountryName: selectedCountryName,
                           quickActionText: quickActionText,
+                          showWelcomeNotification: showWelcomeNotification.value,
+                          onDismissNotification: () => showWelcomeNotification.value = false,
                           onQuickAction: () async => await _handleQuickAction(ref: ref, isDisconnected: isDisconnected),
                         ),
                         _WindowsMenuSection.region => _WindowsRegionSection(
@@ -704,59 +716,147 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
   }
 }
 
+/// Windows 11 风格标题栏控制按鈕（悬停平滑变色）
+class _WinCtrlButton extends StatefulWidget {
+  const _WinCtrlButton({
+    required this.onPressed,
+    required this.icon,
+    required this.iconSize,
+    this.isClose = false,
+    this.disabled = false,
+  });
+
+  final VoidCallback? onPressed;
+  final IconData icon;
+  final double iconSize;
+  final bool isClose;
+  final bool disabled;
+
+  @override
+  State<_WinCtrlButton> createState() => _WinCtrlButtonState();
+}
+
+class _WinCtrlButtonState extends State<_WinCtrlButton> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color bg;
+    final Color iconColor;
+    if (widget.disabled) {
+      bg = Colors.transparent;
+      iconColor = const Color(0xFFC4CDD6);
+    } else if (_hovered) {
+      bg = widget.isClose ? const Color(0xFFE81123) : const Color(0x16000000);
+      iconColor = widget.isClose ? Colors.white : const Color(0xFF2C3440);
+    } else {
+      bg = Colors.transparent;
+      iconColor = const Color(0xFF515C68);
+    }
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      cursor: widget.disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.disabled ? null : widget.onPressed,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 80),
+          width: 46,
+          height: 38,
+          color: bg,
+          child: Icon(widget.icon, size: widget.iconSize, color: iconColor),
+        ),
+      ),
+    );
+  }
+}
+
 class _WindowsTitleBar extends StatelessWidget {
   const _WindowsTitleBar({
     required this.title,
-    required this.onToggleMenu,
     required this.onMinimize,
-    required this.onToggleMaximize,
     required this.onClose,
+    this.accountId,
   });
 
   final String title;
-  final VoidCallback onToggleMenu;
+  final String? accountId;
   final VoidCallback onMinimize;
-  final VoidCallback onToggleMaximize;
   final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
+    const titleStyle = TextStyle(
+      fontSize: 13,
+      color: Color(0xFF141A21),
+      fontWeight: FontWeight.w500,
+      letterSpacing: 0.2,
+    );
+
+    Widget titleWidget;
+    if (accountId != null) {
+      titleWidget = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('LetsVPN (ID: $accountId ', style: titleStyle),
+          Tooltip(
+            message: '复制 ID',
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => Clipboard.setData(ClipboardData(text: accountId!)),
+                borderRadius: BorderRadius.circular(3),
+                hoverColor: const Color(0x18000000),
+                child: const Padding(
+                  padding: EdgeInsets.all(2),
+                  child: Icon(Icons.copy_rounded, size: 12, color: Color(0xFF515C68)),
+                ),
+              ),
+            ),
+          ),
+          const Text(')', style: titleStyle),
+        ],
+      );
+    } else {
+      titleWidget = Text(title, style: titleStyle);
+    }
+
     return GestureDetector(
       onPanStart: (_) => windowManager.startDragging(),
       child: Container(
-        height: 34,
-        color: const Color(0xFFDCE2E8),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        height: 38,
+        color: Colors.transparent,
         child: Row(
           children: [
-            Text(
-              title,
-              style: const TextStyle(fontSize: 14, color: Color(0xFF1F2328), fontWeight: FontWeight.w500),
-            ),
+            const Gap(14),
+            titleWidget,
             const Spacer(),
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
-              onPressed: onToggleMenu,
-              icon: const Icon(Icons.menu_rounded, size: 18, color: Color(0xFF646B73)),
+            // ≡ 菜单按鈕
+            _WinCtrlButton(
+              onPressed: () {},
+              icon: Icons.menu_rounded,
+              iconSize: 16,
             ),
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
+            // 最小化
+            _WinCtrlButton(
               onPressed: onMinimize,
-              icon: const Icon(Icons.remove_rounded, size: 18, color: Color(0xFF646B73)),
+              icon: Icons.remove_rounded,
+              iconSize: 14,
             ),
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
-              onPressed: onToggleMaximize,
-              icon: const Icon(Icons.open_in_full_rounded, size: 14, color: Color(0xFF646B73)),
+            // 最大化（固定尺寸窗口，禁用状态）
+            _WinCtrlButton(
+              onPressed: () {},
+              icon: Icons.open_in_full_rounded,
+              iconSize: 10,
+              disabled: true,
             ),
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
+            // 关闭
+            _WinCtrlButton(
               onPressed: onClose,
-              icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF646B73)),
+              icon: Icons.close_rounded,
+              iconSize: 14,
+              isClose: true,
             ),
           ],
         ),
@@ -784,53 +884,63 @@ class _WindowsSidebarItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selectedColor = const Color(0xFF1B73DE);
-    final textColor = selected ? selectedColor : const Color(0xFF1F2328);
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        height: 50,
-        decoration: BoxDecoration(
-          border: selected ? const Border(left: BorderSide(color: Color(0xFF1B73DE), width: 5)) : null,
-          color: selected ? const Color(0xFFD6DEE6) : Colors.transparent,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 18),
-        child: Row(
-          children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Icon(icon, size: 26 / 1.2, color: textColor),
-                if (showRedDot)
-                  const Positioned(
-                    right: -4,
-                    top: -3,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(color: Color(0xFFFF302A), shape: BoxShape.circle),
-                      child: SizedBox(width: 7, height: 7),
+    const selectedColor = Color(0xFF1E72DE);
+    final textColor = selected ? selectedColor : const Color(0xFF1D232A);
+    final iconColor = selected ? selectedColor : const Color(0xFF1A2028);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        hoverColor: const Color(0x11000000),
+        child: Container(
+          height: 48,
+          decoration: BoxDecoration(
+            border: selected ? const Border(left: BorderSide(color: Color(0xFF1E72DE), width: 4)) : null,
+            color: selected ? const Color(0xFFEFF4FA) : Colors.transparent,
+          ),
+          padding: const EdgeInsets.only(left: 20, right: 16),
+          child: Row(
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(icon, size: 20, color: iconColor),
+                  if (showRedDot)
+                    const Positioned(
+                      right: -4,
+                      top: -3,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(color: Color(0xFFFF302A), shape: BoxShape.circle),
+                        child: SizedBox(width: 6, height: 6),
+                      ),
                     ),
-                  ),
-              ],
-            ),
-            const Gap(16),
-            Text(
-              title,
-              style: TextStyle(fontSize: 34 / 1.6, fontWeight: FontWeight.w500, color: textColor),
-            ),
-            if (badgeText != null) ...[
-              const Gap(8),
-              Container(
-                width: 20,
-                height: 20,
-                decoration: const BoxDecoration(color: Color(0xFFFA1E1B), shape: BoxShape.circle),
-                alignment: Alignment.center,
+                ],
+              ),
+              const Gap(14),
+              Expanded(
                 child: Text(
-                  badgeText!,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white),
+                  title,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    color: textColor,
+                    letterSpacing: 0.1,
+                  ),
                 ),
               ),
+              if (badgeText != null) ...[
+                const Gap(6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(color: const Color(0xFFE3141A), borderRadius: BorderRadius.circular(10)),
+                  child: Text(
+                    badgeText!,
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white),
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -846,6 +956,8 @@ class _WindowsHomeSection extends StatelessWidget {
     required this.selectedCountryName,
     required this.quickActionText,
     required this.onQuickAction,
+    this.showWelcomeNotification = true,
+    this.onDismissNotification,
   });
 
   final List<String> countdownDigits;
@@ -855,6 +967,8 @@ class _WindowsHomeSection extends StatelessWidget {
   final String selectedCountryName;
   final String quickActionText;
   final VoidCallback onQuickAction;
+  final bool showWelcomeNotification;
+  final VoidCallback? onDismissNotification;
 
   @override
   Widget build(BuildContext context) {
@@ -866,30 +980,37 @@ class _WindowsHomeSection extends StatelessWidget {
           children: [
             const Text(
               '首页',
-              style: TextStyle(fontSize: 54 / 1.6, fontWeight: FontWeight.w700, color: Color(0xFF15181C)),
+              style: TextStyle(fontSize: 44, fontWeight: FontWeight.w900, color: Color(0xFF121821)),
             ),
             const Spacer(),
-            Container(
-              width: 330,
-              height: 52,
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF2F2F2),
-                borderRadius: BorderRadius.circular(6),
-                boxShadow: const [BoxShadow(color: Color(0x22000000), blurRadius: 8, offset: Offset(0, 2))],
-              ),
-              child: const Row(
-                children: [
-                  Expanded(
-                    child: Text(
+            if (showWelcomeNotification)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(7),
+                  boxShadow: const [BoxShadow(color: Color(0x18000000), blurRadius: 7, offset: Offset(0, 2))],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.campaign_outlined, size: 18, color: Color(0xFFCC5F8F)),
+                    const Gap(8),
+                    const Text(
                       '尊敬的老用户，欢迎回来。',
-                      style: TextStyle(fontSize: 16 / 1.2, color: Color(0xFF2B2F33), fontWeight: FontWeight.w600),
+                      style: TextStyle(fontSize: 13, color: Color(0xFF3A4250), fontWeight: FontWeight.w500),
                     ),
-                  ),
-                  Icon(Icons.close_rounded, size: 20, color: Color(0xFF71767C)),
-                ],
+                    const Gap(12),
+                    GestureDetector(
+                      onTap: onDismissNotification,
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: const Icon(Icons.close_rounded, size: 16, color: Color(0xFFAAB4BE)),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
           ],
         ),
         const Gap(10),
@@ -898,9 +1019,16 @@ class _WindowsHomeSection extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                memberHeaderTitle,
-                style: const TextStyle(fontSize: 18 / 1.4, color: Color(0xFF1F2328), fontWeight: FontWeight.w500),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    memberHeaderTitle,
+                    style: const TextStyle(fontSize: 12.5, color: Color(0xFF5C6878), fontWeight: FontWeight.w500),
+                  ),
+                  const Gap(4),
+                  const Icon(Icons.shopping_cart_outlined, size: 14, color: Color(0xFFCC5F8F)),
+                ],
               ),
               const Gap(8),
               Row(
@@ -908,18 +1036,14 @@ class _WindowsHomeSection extends StatelessWidget {
                 children: [
                   for (final digit in countdownDigits)
                     Container(
-                      width: 40,
-                      height: 40,
-                      margin: const EdgeInsets.only(left: 3),
-                      color: const Color(0xFFD6DBE2),
+                      width: 38,
+                      height: 38,
+                      margin: const EdgeInsets.only(left: 4),
+                      decoration: BoxDecoration(color: const Color(0xFFDCE3EA), borderRadius: BorderRadius.circular(2)),
                       alignment: Alignment.center,
                       child: Text(
                         digit,
-                        style: const TextStyle(
-                          fontSize: 24 / 1.4,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1F2328),
-                        ),
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Color(0xFF1A2332)),
                       ),
                     ),
                 ],
@@ -930,49 +1054,63 @@ class _WindowsHomeSection extends StatelessWidget {
         const Spacer(),
         Center(
           child: SizedBox(
-            width: 580,
+            width: 620,
             child: Row(
               children: [
-                _ConnectionStatusBadge(connectionState: connectionState),
+                _ConnectionStatusBadge(connectionState: connectionState, size: 220),
                 const Gap(34),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        statusText,
-                        style: const TextStyle(
-                          fontSize: 58 / 1.6,
-                          color: Color(0xFF111418),
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const Gap(14),
-                      Text(
-                        '网络： $selectedCountryName',
-                        style: const TextStyle(
-                          fontSize: 40 / 1.6,
-                          color: Color(0xFF111418),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const Gap(26),
-                      SizedBox(
-                        width: 300,
-                        height: 48,
-                        child: FilledButton(
-                          onPressed: onQuickAction,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFFD6568B),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
-                          ),
-                          child: Text(
-                            quickActionText,
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 42 / 1.6),
+                  child: SizedBox(
+                    width: 320,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          statusText,
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 28,
+                            color: Color(0xFF1A2332),
+                            fontWeight: FontWeight.w400,
                           ),
                         ),
-                      ),
-                    ],
+                        const Gap(10),
+                        Text(
+                          '网络： $selectedCountryName',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF5C6878),
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                        const Gap(22),
+                        SizedBox(
+                          width: 233,
+                          height: 47,
+                          child: FilledButton(
+                            onPressed: onQuickAction,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFFDE5586),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
+                              elevation: 0,
+                            ),
+                            child: Text(
+                              quickActionText,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 22,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -1000,6 +1138,7 @@ class _WindowsRegionSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final showModeSection = serviceMode == ServiceMode.systemProxy;
     final countryIndexByName = <String, int>{for (var i = 0; i < _kCountries.length; i++) _kCountries[i].$2: i};
     List<int> indicesOf(List<String> names) {
       return names.map((name) => countryIndexByName[name]).whereType<int>().toList();
@@ -1014,14 +1153,62 @@ class _WindowsRegionSection extends StatelessWidget {
       ('南美洲', indicesOf(const ['阿根廷', '巴西'])),
     ];
 
+    Widget buildModeOption({
+      required String title,
+      required String subtitle,
+      required ServiceMode value,
+      bool emphasizeBorder = false,
+    }) {
+      final selected = serviceMode == value;
+      return InkWell(
+        onTap: () => onModeChanged(value),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+          decoration: emphasizeBorder && selected
+              ? BoxDecoration(
+                  border: Border.all(color: const Color(0xFF595D63), width: 1, style: BorderStyle.solid),
+                )
+              : null,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Radio<ServiceMode>(
+                value: value,
+                groupValue: serviceMode,
+                visualDensity: VisualDensity.compact,
+                onChanged: (mode) => onModeChanged(mode ?? value),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(fontSize: 19 / 1.2, fontWeight: FontWeight.w500),
+                      ),
+                      const Gap(2),
+                      Text(subtitle, style: const TextStyle(fontSize: 13, color: Color(0xFF343A41), height: 1.3)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     Widget buildCountryOptions(List<int> indexes) {
       return Wrap(
-        spacing: 20,
-        runSpacing: 4,
+        spacing: 14,
+        runSpacing: 6,
         children: [
           for (final countryIndex in indexes)
             SizedBox(
-              width: 190,
+              width: 122,
               child: InkWell(
                 onTap: () => onSelectCountry(countryIndex),
                 child: Row(
@@ -1032,9 +1219,12 @@ class _WindowsRegionSection extends StatelessWidget {
                       visualDensity: VisualDensity.compact,
                       onChanged: (_) => onSelectCountry(countryIndex),
                     ),
-                    Text(
-                      '${_kCountries[countryIndex].$1} ${_kCountries[countryIndex].$2}',
-                      style: const TextStyle(fontSize: 16),
+                    Expanded(
+                      child: Text(
+                        '${_kCountries[countryIndex].$1} ${_kCountries[countryIndex].$2}',
+                        style: const TextStyle(fontSize: 13, color: Color(0xFF1C2025)),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),
@@ -1049,12 +1239,17 @@ class _WindowsRegionSection extends StatelessWidget {
       children: [
         const Text(
           '变更国家和地区',
-          style: TextStyle(fontSize: 54 / 1.6, fontWeight: FontWeight.w700, color: Color(0xFF15181C)),
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Color(0xFF1A2332)),
         ),
-        const Gap(20),
+        const Gap(16),
         Expanded(
           child: Container(
-            decoration: BoxDecoration(border: Border.all(color: const Color(0xFFCCD2D9))),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFE0E8F0)),
+              boxShadow: const [BoxShadow(color: Color(0x0A000000), blurRadius: 8, offset: Offset(0, 2))],
+            ),
             child: Scrollbar(
               thumbVisibility: true,
               child: SingleChildScrollView(
@@ -1062,37 +1257,32 @@ class _WindowsRegionSection extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      '选择模式',
-                      style: TextStyle(fontSize: 40 / 1.6, fontWeight: FontWeight.w600),
-                    ),
-                    const Gap(10),
-                    RadioListTile<ServiceMode>(
-                      dense: true,
-                      value: ServiceMode.tun,
-                      groupValue: serviceMode,
-                      onChanged: (mode) => onModeChanged(mode ?? ServiceMode.tun),
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('极速模式', style: TextStyle(fontSize: 18)),
-                      subtitle: const Text('智能分流，仅代理需要翻墙的网络流量，不影响本地资源访问。', style: TextStyle(fontSize: 14)),
-                    ),
-                    RadioListTile<ServiceMode>(
-                      dense: true,
-                      value: ServiceMode.systemProxy,
-                      groupValue: serviceMode,
-                      onChanged: (mode) => onModeChanged(mode ?? ServiceMode.systemProxy),
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('安全模式', style: TextStyle(fontSize: 18)),
-                      subtitle: const Text('代理全部网络流量，改变 IP 地址，安全性极强。', style: TextStyle(fontSize: 14)),
-                    ),
-                    const Divider(height: 28),
+                    if (showModeSection) ...[
+                      const Text(
+                        '选择模式',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF1A2332)),
+                      ),
+                      const Gap(8),
+                      buildModeOption(
+                        title: '极速模式',
+                        subtitle: '智能分流，仅代理需要翻墙的网络流量，不影响本地资源访问。',
+                        value: ServiceMode.tun,
+                        emphasizeBorder: true,
+                      ),
+                      buildModeOption(
+                        title: '安全模式',
+                        subtitle: '代理全部网络流量，改变 IP 地址，安全性极强。',
+                        value: ServiceMode.systemProxy,
+                      ),
+                      const Divider(height: 28),
+                    ],
                     const Text(
                       '选择网络',
-                      style: TextStyle(fontSize: 40 / 1.6, fontWeight: FontWeight.w600),
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF1A2332)),
                     ),
                     const Gap(6),
                     SizedBox(
-                      width: 240,
+                      width: 280,
                       child: InkWell(
                         onTap: () => onSelectCountry(0),
                         child: Row(
@@ -1103,7 +1293,18 @@ class _WindowsRegionSection extends StatelessWidget {
                               visualDensity: VisualDensity.compact,
                               onChanged: (_) => onSelectCountry(0),
                             ),
-                            const Text('🌐 自动匹配最快网络', style: TextStyle(fontSize: 18)),
+                            Container(
+                              width: 22,
+                              height: 22,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFD05E90),
+                                borderRadius: BorderRadius.circular(1),
+                              ),
+                              alignment: Alignment.center,
+                              child: const Icon(Icons.place_rounded, size: 14, color: Colors.white),
+                            ),
+                            const Gap(8),
+                            const Text('自动匹配最快网络', style: TextStyle(fontSize: 20 / 1.2)),
                           ],
                         ),
                       ),
@@ -1113,7 +1314,7 @@ class _WindowsRegionSection extends StatelessWidget {
                       if (indexes.isNotEmpty) ...[
                         Text(
                           title,
-                          style: const TextStyle(fontSize: 38 / 1.6, fontWeight: FontWeight.w500),
+                          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500, color: Color(0xFF20242A)),
                         ),
                         const Gap(6),
                         buildCountryOptions(indexes),
@@ -1143,36 +1344,52 @@ class _WindowsReferralSection extends StatelessWidget {
       children: [
         const Text(
           '推荐有奖',
-          style: TextStyle(fontSize: 54 / 1.6, fontWeight: FontWeight.w700, color: Color(0xFF15181C)),
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Color(0xFF1A2332)),
         ),
         const Gap(18),
-        Text.rich(
-          TextSpan(
-            style: const TextStyle(fontSize: 17 / 1.3, color: Color(0xFF1D2024), height: 1.8),
-            children: [
-              const TextSpan(text: '好友安装快连后，填写您的ID（'),
-              TextSpan(
-                text: userId,
-                style: const TextStyle(color: Color(0xFF2457A6), fontWeight: FontWeight.w700),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text.rich(
+                TextSpan(
+                  style: const TextStyle(fontSize: 13.5, color: Color(0xFF1D2024), height: 1.8),
+                  children: [
+                    const TextSpan(text: '好友安装快连后，填写您的ID（'),
+                    TextSpan(
+                      text: userId,
+                      style: const TextStyle(color: Color(0xFF2457A6), fontWeight: FontWeight.w700),
+                    ),
+                    const TextSpan(text: '）即算推荐成功；\n当其每次获得会员，您均可赚取 '),
+                    const TextSpan(
+                      text: '20%',
+                      style: TextStyle(fontSize: 20, color: Color(0xFF2457A6), fontWeight: FontWeight.w700),
+                    ),
+                    const TextSpan(text: ' 的时长！永久有效！'),
+                  ],
+                ),
               ),
-              const TextSpan(text: '）即算推荐成功；\n当其每次获得会员，您均可赚取 '),
-              const TextSpan(
-                text: '20%',
-                style: TextStyle(fontSize: 20, color: Color(0xFF2457A6), fontWeight: FontWeight.w700),
+            ),
+            Container(
+              margin: const EdgeInsets.only(top: 18),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                border: Border.all(color: const Color(0xFFCC5F8F), width: 1),
+                borderRadius: BorderRadius.circular(4),
               ),
-              const TextSpan(text: ' 的时长！永久有效！'),
-            ],
-          ),
+              child: const Text('详细规则>>', style: TextStyle(fontSize: 12, color: Color(0xFFCC5F8F))),
+            ),
+          ],
         ),
         const Gap(14),
         SizedBox(
-          width: 300,
+          width: 270,
           height: 46,
           child: FilledButton(
             onPressed: () => Clipboard.setData(ClipboardData(text: userId)),
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF1F69C9),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
+              backgroundColor: const Color(0xFFCC5F8F),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             child: const Text(
               '推荐给好友',
@@ -1185,7 +1402,7 @@ class _WindowsReferralSection extends StatelessWidget {
           child: Row(
             children: [
               SizedBox(
-                width: 280,
+                width: 222,
                 child: Column(
                   children: const [
                     _WindowsMetricCard(title: '成功推荐', value: '0人'),
@@ -1196,14 +1413,21 @@ class _WindowsReferralSection extends StatelessWidget {
                   ],
                 ),
               ),
-              const Gap(14),
+              const Gap(12),
               const Expanded(
                 child: DecoratedBox(
-                  decoration: BoxDecoration(color: Color(0xFFE6E6ED)),
+                  decoration: BoxDecoration(color: Color(0xFFF0F4F8), borderRadius: BorderRadius.zero),
                   child: Center(
-                    child: Text(
-                      '暂无推荐奖励记录，快去推荐好友吧！',
-                      style: TextStyle(fontSize: 18 / 1.6, color: Color(0xFF999BA3)),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.description_outlined, color: Color(0xFFB6BBC3), size: 64),
+                        Gap(14),
+                        Text(
+                          '暂无还未获得推荐奖励，快去推荐好友吧！',
+                          style: TextStyle(fontSize: 18 / 1.6, color: Color(0xFF93979F)),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -1225,21 +1449,23 @@ class _WindowsMetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: DecoratedBox(
-        decoration: const BoxDecoration(color: Color(0xFFE6E6ED)),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFE4EAF0), width: 1),
+          boxShadow: const [BoxShadow(color: Color(0x08000000), blurRadius: 4, offset: Offset(0, 1))],
+        ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                title,
-                style: const TextStyle(fontSize: 20 / 1.5, color: Color(0xFF1D2024)),
-              ),
+              Text(title, style: const TextStyle(fontSize: 13, color: Color(0xFF5C6878))),
               const Spacer(),
               Text(
                 value,
-                style: const TextStyle(fontSize: 50 / 1.5, color: Color(0xFF1B73DE), fontWeight: FontWeight.w500),
+                style: const TextStyle(fontSize: 28, color: Color(0xFF1F69C9), fontWeight: FontWeight.w600),
               ),
             ],
           ),
@@ -1259,40 +1485,32 @@ class _WindowsFreeMembershipSection extends StatelessWidget {
       children: [
         const Text(
           '免费领会员',
-          style: TextStyle(fontSize: 54 / 1.6, fontWeight: FontWeight.w700, color: Color(0xFF15181C)),
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Color(0xFF1A2332)),
         ),
-        const Gap(18),
+        const Gap(10),
         Expanded(
           child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 600),
+              constraints: const BoxConstraints(maxWidth: 640),
               child: Column(
                 children: [
-                  Container(
-                    width: 220,
-                    height: 160,
-                    decoration: BoxDecoration(color: const Color(0xFFEDEFF5), borderRadius: BorderRadius.circular(80)),
-                    child: const Icon(Icons.workspace_premium_rounded, size: 106, color: Color(0xFF5F95F8)),
-                  ),
+                  const _WindowsFreeTicketArtwork(),
                   const Gap(16),
                   const Text(
                     '免费领会员',
-                    style: TextStyle(fontSize: 58 / 1.8, fontWeight: FontWeight.w700),
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: Color(0xFF1A2332)),
                   ),
                   const Gap(8),
-                  const Text(
-                    '每天都来点一点，免费会员随便领！',
-                    style: TextStyle(fontSize: 34 / 1.8, color: Color(0xFF2B2F34)),
-                  ),
+                  const Text('每天都来点一点，免费会员随便领！', style: TextStyle(fontSize: 13.5, color: Color(0xFF5C6878))),
                   const Gap(16),
                   SizedBox(
-                    width: 240,
+                    width: 236,
                     height: 46,
                     child: FilledButton(
                       onPressed: () {},
                       style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF1F69C9),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
+                        backgroundColor: const Color(0xFFCC5F8F),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                       child: const Text(
                         '试试运气',
@@ -1306,7 +1524,7 @@ class _WindowsFreeMembershipSection extends StatelessWidget {
                       Expanded(
                         child: _WindowsStatPanel(title: '今日领取人数', value: '38094人'),
                       ),
-                      Gap(20),
+                      Gap(22),
                       Expanded(
                         child: _WindowsStatPanel(title: '累计领取会员', value: '32554小时'),
                       ),
@@ -1330,24 +1548,92 @@ class _WindowsStatPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(color: Color(0xFFE6E6ED)),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE4EAF0), width: 1),
+        boxShadow: const [BoxShadow(color: Color(0x08000000), blurRadius: 4, offset: Offset(0, 1))],
+      ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 18),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              title,
-              style: const TextStyle(fontSize: 22 / 1.6, color: Color(0xFF1D2024)),
-            ),
-            const Gap(24),
+            Text(title, style: const TextStyle(fontSize: 13, color: Color(0xFF5C6878))),
+            const Gap(20),
             Text(
               value,
-              style: const TextStyle(fontSize: 58 / 1.8, color: Color(0xFF1B73DE), fontWeight: FontWeight.w500),
+              style: const TextStyle(fontSize: 26, color: Color(0xFF1F69C9), fontWeight: FontWeight.w600),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _WindowsFreeTicketArtwork extends StatelessWidget {
+  const _WindowsFreeTicketArtwork();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 220,
+      height: 180,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: 160,
+            height: 160,
+            decoration: const BoxDecoration(color: Color(0x11FFFFFF), shape: BoxShape.circle),
+          ),
+          Positioned(
+            top: 24,
+            child: Transform.rotate(
+              angle: -0.35,
+              child: Container(
+                width: 112,
+                height: 66,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFFEFD8AE), Color(0xFFD9A95D)],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 54,
+            child: Container(
+              width: 164,
+              height: 102,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(22),
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF7AB1FF), Color(0xFF1F69C9)],
+                ),
+                boxShadow: const [BoxShadow(color: Color(0x400F4AA8), blurRadius: 12, offset: Offset(0, 4))],
+              ),
+              child: const Center(
+                child: Text(
+                  'FREE',
+                  style: TextStyle(color: Colors.white, fontSize: 52 / 1.5, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ),
+          ),
+          const Positioned(left: 40, top: 122, child: Icon(Icons.diamond_rounded, color: Color(0xFFE6C787), size: 54)),
+          const Positioned(left: 46, top: 26, child: Icon(Icons.auto_awesome, color: Color(0xFFFFE5A7), size: 24)),
+          const Positioned(right: 30, top: 38, child: Icon(Icons.auto_awesome, color: Color(0xFFFFE5A7), size: 18)),
+          const Positioned(right: 20, top: 124, child: Icon(Icons.auto_awesome, color: Color(0xFFFFE5A7), size: 20)),
+        ],
       ),
     );
   }
@@ -1367,47 +1653,55 @@ class _WindowsMessagesSection extends StatelessWidget {
       children: [
         const Text(
           '消息中心',
-          style: TextStyle(fontSize: 54 / 1.6, fontWeight: FontWeight.w700, color: Color(0xFF15181C)),
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Color(0xFF1A2332)),
         ),
         const Gap(18),
         Expanded(
           child: ListView.separated(
             itemCount: messages.length,
-            separatorBuilder: (_, _) => const Gap(16),
+            separatorBuilder: (_, _) => const Gap(26),
             itemBuilder: (context, index) {
               final (title, body) = messages[index];
               return Container(
-                decoration: const BoxDecoration(color: Color(0xFFEFEFF1)),
-                padding: const EdgeInsets.fromLTRB(0, 14, 16, 14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: const [BoxShadow(color: Color(0x0A000000), blurRadius: 6, offset: Offset(0, 2))],
+                  border: Border.all(color: const Color(0xFFE8EEF4), width: 1),
+                ),
+                padding: const EdgeInsets.fromLTRB(0, 14, 14, 14),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(width: 8, height: 82, color: const Color(0xFF1B73DE)),
+                    Container(
+                      width: 5,
+                      height: 86,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1F69C9),
+                        borderRadius: const BorderRadius.only(
+                          topRight: Radius.circular(3),
+                          bottomRight: Radius.circular(3),
+                        ),
+                      ),
+                    ),
                     const Gap(12),
-                    const Icon(Icons.info_rounded, color: Color(0xFF1B73DE), size: 32),
-                    const Gap(12),
+                    const Icon(Icons.info_rounded, color: Color(0xFF1F69C9), size: 28),
+                    const Gap(10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             title,
-                            style: const TextStyle(
-                              fontSize: 21 / 1.5,
-                              color: Color(0xFF171A1E),
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: const TextStyle(fontSize: 14, color: Color(0xFF171A1E), fontWeight: FontWeight.w600),
                           ),
                           const Gap(8),
-                          Text(
-                            body,
-                            style: const TextStyle(fontSize: 17 / 1.5, color: Color(0xFF92969C), height: 1.35),
-                          ),
+                          Text(body, style: const TextStyle(fontSize: 12.5, color: Color(0xFF7A8596), height: 1.4)),
                         ],
                       ),
                     ),
                     const Padding(
-                      padding: EdgeInsets.only(top: 4),
+                      padding: EdgeInsets.only(top: 2),
                       child: DecoratedBox(
                         decoration: BoxDecoration(color: Color(0xFFFF1D1D), shape: BoxShape.circle),
                         child: SizedBox(width: 8, height: 8),
@@ -1451,89 +1745,118 @@ class _WindowsSettingsSection extends HookConsumerWidget {
       children: [
         const Text(
           '软件设置',
-          style: TextStyle(fontSize: 54 / 1.6, fontWeight: FontWeight.w700, color: Color(0xFF15181C)),
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Color(0xFF1A2332)),
         ),
-        const Gap(20),
+        const Gap(14),
         Expanded(
-          child: Container(
-            decoration: BoxDecoration(border: Border.all(color: const Color(0xFFCCD2D9))),
-            padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-            child: ListView(
-              children: [
-                const Text(
-                  '开机启动',
-                  style: TextStyle(fontSize: 42 / 1.6, fontWeight: FontWeight.w600),
-                ),
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text('系统占用资源较少，建议开启开机自动启动。', style: TextStyle(fontSize: 16, color: Color(0xFF1F2328))),
-                    ),
-                    Switch.adaptive(value: autoStartEnabled, onChanged: onAutoStartChanged),
-                    const Text('开启', style: TextStyle(fontSize: 18, color: Color(0xFF1F2328))),
-                  ],
-                ),
-                const Divider(height: 28),
-                const Text(
-                  '显示语言',
-                  style: TextStyle(fontSize: 42 / 1.6, fontWeight: FontWeight.w600),
-                ),
-                const Gap(10),
-                SizedBox(
-                  width: 260,
-                  child: DropdownButtonFormField<String>(
-                    value: localeDropdownValue,
-                    items: localeOptions,
-                    onChanged: (value) {
-                      if (value != null) {
-                        onLocaleChanged(value);
-                      }
-                    },
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.zero),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    ),
+          child: ListView(
+            children: [
+              const Divider(height: 1, color: Color(0xFFEBF0F5)),
+              const Gap(14),
+              Row(
+                children: const [
+                  Icon(Icons.adjust_rounded, size: 20, color: Color(0xFF1A2332)),
+                  Gap(10),
+                  Text(
+                    '开机启动',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF1A2332)),
                   ),
-                ),
-                const Divider(height: 28),
-                const Text(
-                  '关于我们',
-                  style: TextStyle(fontSize: 42 / 1.6, fontWeight: FontWeight.w600),
-                ),
-                const Gap(10),
-                Row(
-                  children: [
-                    Text('当前版本： $currentVersion', style: const TextStyle(fontSize: 18, color: Color(0xFF1F2328))),
-                    const Gap(36),
-                    InkWell(
-                      onTap: () => UriUtils.tryLaunch(Uri.parse(Constants.appCastUrl)),
-                      child: const Text(
-                        '检查更新',
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Color(0xFF1B73DE),
-                          decoration: TextDecoration.underline,
-                          decorationColor: Color(0xFF1B73DE),
-                        ),
+                ],
+              ),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(left: 2, top: 8),
+                      child: Text(
+                        '系统占用资源较少，建议开启开机自动启动。',
+                        style: TextStyle(fontSize: 20 / 1.4, color: Color(0xFF1F2328)),
                       ),
                     ),
-                  ],
+                  ),
+                  Switch.adaptive(value: autoStartEnabled, onChanged: onAutoStartChanged),
+                  const Text('开启', style: TextStyle(fontSize: 18, color: Color(0xFF1F2328))),
+                ],
+              ),
+              const Gap(10),
+              const Divider(height: 1, color: Color(0xFFEBF0F5)),
+              const Gap(14),
+              Row(
+                children: const [
+                  Icon(Icons.translate_rounded, size: 20, color: Color(0xFF1A2332)),
+                  Gap(10),
+                  Text(
+                    '显示语言',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF1A2332)),
+                  ),
+                ],
+              ),
+              const Gap(10),
+              SizedBox(
+                width: 320,
+                child: DropdownButtonFormField<String>(
+                  value: localeDropdownValue,
+                  items: localeOptions,
+                  onChanged: (value) {
+                    if (value != null) {
+                      onLocaleChanged(value);
+                    }
+                  },
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(6))),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    fillColor: Color(0xFFF5F8FC),
+                    filled: true,
+                  ),
                 ),
-                const Gap(16),
-                InkWell(
-                  onTap: () => UriUtils.tryLaunch(Uri.parse(Constants.privacyPolicyUrl)),
-                  child: const Text('隐私协议', style: TextStyle(fontSize: 18, color: Color(0xFF1B73DE))),
-                ),
-                const Gap(8),
-                InkWell(
-                  onTap: () => UriUtils.tryLaunch(Uri.parse(Constants.termsAndConditionsUrl)),
-                  child: const Text('服务条款', style: TextStyle(fontSize: 18, color: Color(0xFF1B73DE))),
-                ),
-                const Gap(8),
-                const Text('版权所有 © LetsVPN 团队', style: TextStyle(fontSize: 18, color: Color(0xFF1F2328))),
-              ],
-            ),
+              ),
+              const Gap(16),
+              const Divider(height: 1, color: Color(0xFFEBF0F5)),
+              const Gap(14),
+              Row(
+                children: const [
+                  Icon(Icons.info_outline_rounded, size: 20, color: Color(0xFF1A2332)),
+                  Gap(10),
+                  Text(
+                    '关于我们',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF1A2332)),
+                  ),
+                ],
+              ),
+              const Gap(10),
+              Row(
+                children: [
+                  Text('当前版本： $currentVersion', style: const TextStyle(fontSize: 18, color: Color(0xFF1F2328))),
+                  const Gap(36),
+                  InkWell(
+                    onTap: () => UriUtils.tryLaunch(Uri.parse(Constants.appCastUrl)),
+                    child: const Text(
+                      '检查更新',
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Color(0xFF1B73DE),
+                        decoration: TextDecoration.underline,
+                        decorationColor: Color(0xFF1B73DE),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const Gap(16),
+              InkWell(
+                onTap: () => UriUtils.tryLaunch(Uri.parse(Constants.privacyPolicyUrl)),
+                child: const Text('隐私协议', style: TextStyle(fontSize: 18, color: Color(0xFF1B73DE))),
+              ),
+              const Gap(8),
+              InkWell(
+                onTap: () => UriUtils.tryLaunch(Uri.parse(Constants.termsAndConditionsUrl)),
+                child: const Text('服务条款', style: TextStyle(fontSize: 18, color: Color(0xFF1B73DE))),
+              ),
+              const Gap(8),
+              const Text('版权所有 © LetsVPN 团队', style: TextStyle(fontSize: 18, color: Color(0xFF1F2328))),
+              const Gap(20),
+            ],
           ),
         ),
       ],
@@ -1733,9 +2056,10 @@ class _CountDownHeader extends StatelessWidget {
 }
 
 class _ConnectionStatusBadge extends StatefulWidget {
-  const _ConnectionStatusBadge({required this.connectionState});
+  const _ConnectionStatusBadge({required this.connectionState, this.size = 170});
 
   final ConnectionStatus connectionState;
+  final double size;
 
   @override
   State<_ConnectionStatusBadge> createState() => _ConnectionStatusBadgeState();
@@ -1764,82 +2088,155 @@ class _ConnectionStatusBadgeState extends State<_ConnectionStatusBadge> with Tic
     final isConnected = widget.connectionState is Connected;
     final isTransitioning = widget.connectionState is Connecting || widget.connectionState is Disconnecting;
     final isConnecting = widget.connectionState is Connecting;
+    final s = widget.size;
 
-    final Color outerRingColor;
-    final Color innerRingColor;
+    // 圆圈各层尺寸
+    final outerGlowSize = s * 0.92;
+    final midGlowSize = s * 0.84;
+    final innerGlowSize = s * 0.78;
+    final centerCircleSize = s * 0.74;
+    final outerOffset = s * 0.12;
+    final midOffset = s * 0.08;
+    final innerOffset = s * 0.04;
+
+    // 颜色配置
+    final Color glow1;
+    final Color glow2;
+    final Color glow3;
     final Color borderColor;
     final Color iconColor;
     final IconData icon;
 
     if (isConnected) {
-      outerRingColor = const Color(0x22CF5F91);
-      innerRingColor = const Color(0x33CF5F91);
+      glow1 = const Color(0x14CF5F91);
+      glow2 = const Color(0x22CF5F91);
+      glow3 = const Color(0x33CF5F91);
       borderColor = const Color(0xFFCF5F91);
       iconColor = const Color(0xFFCF5F91);
       icon = Icons.link_rounded;
     } else if (isConnecting) {
-      outerRingColor = const Color(0x22CC5F8F);
-      innerRingColor = const Color(0x33CC5F8F);
+      glow1 = const Color(0x18CC5F8F);
+      glow2 = const Color(0x28CC5F8F);
+      glow3 = const Color(0x38CC5F8F);
       borderColor = const Color(0xFFCC5F8F);
       iconColor = const Color(0xFFCC5F8F);
       icon = Icons.sync_rounded;
     } else if (widget.connectionState is Disconnecting) {
-      outerRingColor = const Color(0x22FF9800);
-      innerRingColor = const Color(0x33FF9800);
+      glow1 = const Color(0x18FF9800);
+      glow2 = const Color(0x28FF9800);
+      glow3 = const Color(0x38FF9800);
       borderColor = const Color(0xFFFF9800);
       iconColor = const Color(0xFFFF9800);
       icon = Icons.sync_rounded;
     } else {
-      outerRingColor = const Color(0x22CF5F91);
-      innerRingColor = const Color(0x33CF5F91);
+      glow1 = const Color(0x14CF5F91);
+      glow2 = const Color(0x22CF5F91);
+      glow3 = const Color(0x33CF5F91);
       borderColor = const Color(0xFFCF5F91);
       iconColor = const Color(0xFFCF5F91);
       icon = Icons.link_off_rounded;
     }
 
-    Widget iconWidget = Icon(icon, color: iconColor, size: 56);
+    Widget iconWidget = Icon(icon, color: iconColor, size: s * 0.33);
     if (isTransitioning) {
       iconWidget = RotationTransition(turns: _rotationController, child: iconWidget);
     }
 
     return SizedBox(
-      width: 170,
-      height: 170,
+      width: s,
+      height: s,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // 外圈光源 - 沿圆形路径缓慢旋转
+          // 外层：三个圆圈，120°间隔旋转
           AnimatedBuilder(
             animation: _glowController,
             builder: (context, child) {
-              final angle = -_glowController.value * 2 * pi;
-              return Transform.translate(offset: Offset(7.0 * cos(angle), 7.0 * sin(angle)), child: child);
+              final base = -_glowController.value * 2 * pi;
+              return Stack(
+                alignment: Alignment.center,
+                children: [
+                  for (int i = 0; i < 3; i++)
+                    Transform.translate(
+                      offset: Offset(
+                        outerOffset * cos(base + i * 2 * pi / 3),
+                        outerOffset * sin(base + i * 2 * pi / 3),
+                      ),
+                      child: Container(
+                        width: outerGlowSize,
+                        height: outerGlowSize,
+                        decoration: BoxDecoration(shape: BoxShape.circle, color: glow1),
+                      ),
+                    ),
+                ],
+              );
             },
-            child: Container(
-              width: 142,
-              height: 142,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: outerRingColor),
-            ),
           ),
-          // 内圈 - 居中静止
-          Container(
-            width: 132,
-            height: 132,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: innerRingColor),
+          // 中层：三个圆圈，60°相位偏移
+          AnimatedBuilder(
+            animation: _glowController,
+            builder: (context, child) {
+              final base = -_glowController.value * 2 * pi + pi / 3;
+              return Stack(
+                alignment: Alignment.center,
+                children: [
+                  for (int i = 0; i < 3; i++)
+                    Transform.translate(
+                      offset: Offset(
+                        midOffset * cos(base + i * 2 * pi / 3),
+                        midOffset * sin(base + i * 2 * pi / 3),
+                      ),
+                      child: Container(
+                        width: midGlowSize,
+                        height: midGlowSize,
+                        decoration: BoxDecoration(shape: BoxShape.circle, color: glow2),
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
-          // 中心圆 + 图标
+          // 内层：三个圆圈，再偏移 120°
+          AnimatedBuilder(
+            animation: _glowController,
+            builder: (context, child) {
+              final base = -_glowController.value * 2 * pi + 2 * pi / 3;
+              return Stack(
+                alignment: Alignment.center,
+                children: [
+                  for (int i = 0; i < 3; i++)
+                    Transform.translate(
+                      offset: Offset(
+                        innerOffset * cos(base + i * 2 * pi / 3),
+                        innerOffset * sin(base + i * 2 * pi / 3),
+                      ),
+                      child: Container(
+                        width: innerGlowSize,
+                        height: innerGlowSize,
+                        decoration: BoxDecoration(shape: BoxShape.circle, color: glow3),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+          // 中心圆：白色+边框+图标
           Container(
-            width: 122,
-            height: 122,
+            width: centerCircleSize,
+            height: centerCircleSize,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: Colors.white,
-              border: Border.all(color: borderColor, width: 1.5),
+              border: Border.all(color: borderColor, width: s * 0.009),
               boxShadow: [
-                BoxShadow(color: borderColor.withValues(alpha: .2), blurRadius: 16, offset: const Offset(0, 8)),
+                BoxShadow(
+                  color: borderColor.withValues(alpha: .2),
+                  blurRadius: s * 0.095,
+                  offset: Offset(0, s * 0.047),
+                ),
               ],
             ),
-            child: iconWidget,
+            child: Center(child: iconWidget),
           ),
         ],
       ),
