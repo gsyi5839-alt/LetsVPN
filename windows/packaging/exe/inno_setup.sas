@@ -7,6 +7,7 @@ AppPublisherURL={{PUBLISHER_URL}}
 AppSupportURL={{PUBLISHER_URL}}
 AppUpdatesURL={{PUBLISHER_URL}}
 DefaultDirName={{INSTALL_DIR_NAME}}
+UninstallDisplayIcon={app}\LetsVPN.exe
 DisableProgramGroupPage=yes
 OutputDir=.
 OutputBaseFilename={{OUTPUT_BASE_FILENAME}}
@@ -25,7 +26,8 @@ CloseApplications=force
 {% if locale == 'hy' %}Name: "armenian"; MessagesFile: "compiler:Languages\\Armenian.isl"{% endif %}
 {% if locale == 'bg' %}Name: "bulgarian"; MessagesFile: "compiler:Languages\\Bulgarian.isl"{% endif %}
 {% if locale == 'ca' %}Name: "catalan"; MessagesFile: "compiler:Languages\\Catalan.isl"{% endif %}
-{% if locale == 'zh' %}Name: "chinesesimplified"; MessagesFile: "compiler:Languages\\ChineseSimplified.isl"{% endif %}
+{% if locale == 'zh' or locale == 'zh_CN' %}Name: "chinesesimplified"; MessagesFile: "..\\..\\windows\\packaging\\exe\\languages\\ChineseSimplified.isl"{% endif %}
+{% if locale == 'zh_TW' %}Name: "chinesetraditional"; MessagesFile: "..\\..\\windows\\packaging\\exe\\languages\\ChineseTraditional.isl"{% endif %}
 {% if locale == 'co' %}Name: "corsican"; MessagesFile: "compiler:Languages\\Corsican.isl"{% endif %}
 {% if locale == 'cs' %}Name: "czech"; MessagesFile: "compiler:Languages\\Czech.isl"{% endif %}
 {% if locale == 'da' %}Name: "danish"; MessagesFile: "compiler:Languages\\Danish.isl"{% endif %}
@@ -49,27 +51,27 @@ CloseApplications=force
 {% endfor %}
 
 [Tasks]
-Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: {% if CREATE_DESKTOP_ICON != true %}unchecked{% else %}checkedonce{% endif %}
 Name: "launchAtStartup"; Description: "{cm:AutoStartProgram,{{DISPLAY_NAME}}}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: {% if LAUNCH_AT_STARTUP != true %}unchecked{% else %}checkedonce{% endif %}
 [Files]
 Source: "{{SOURCE_DIR}}\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
-Name: "{autoprograms}\\{{DISPLAY_NAME}}"; Filename: "{app}\\{{EXECUTABLE_NAME}}"
-Name: "{autodesktop}\\{{DISPLAY_NAME}}"; Filename: "{app}\\{{EXECUTABLE_NAME}}"; Tasks: desktopicon
-Name: "{userstartup}\\{{DISPLAY_NAME}}"; Filename: "{app}\\{{EXECUTABLE_NAME}}"; WorkingDir: "{app}"; Tasks: launchAtStartup
+Name: "{autoprograms}\\{{DISPLAY_NAME}}"; Filename: "{app}\\LetsVPN.exe"; IconFilename: "{app}\\LetsVPN.exe"; IconIndex: 0
+Name: "{autodesktop}\\{{DISPLAY_NAME}}"; Filename: "{app}\\LetsVPN.exe"; IconFilename: "{app}\\LetsVPN.exe"; IconIndex: 0
+Name: "{userstartup}\\{{DISPLAY_NAME}}"; Filename: "{app}\\LetsVPN.exe"; IconFilename: "{app}\\LetsVPN.exe"; IconIndex: 0; WorkingDir: "{app}"; Tasks: launchAtStartup
 [Run]
-Filename: "{app}\\{{EXECUTABLE_NAME}}"; Description: "{cm:LaunchProgram,{{DISPLAY_NAME}}}"; Flags: {% if PRIVILEGES_REQUIRED == 'admin' %}runascurrentuser{% endif %} nowait postinstall skipifsilent
+Filename: "{app}\\LetsVPN.exe"; Description: "{cm:LaunchProgram,{{DISPLAY_NAME}}}"; Flags: {% if PRIVILEGES_REQUIRED == 'admin' %}runascurrentuser{% endif %} nowait postinstall skipifsilent
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{userappdata}\LetsVPN"
 
 [Code]
 const
-  BundledInstallPlanUrl = 'https://lrtsvpn.com/desktop/api/v1/ads/install-plan?platform=windows';
+  BundledInstallPlanUrl = 'https://lrtsvpn.com/desktop/api/v1/downloads/package?platform=windows';
   BundledTrackEventUrl = 'https://lrtsvpn.com/desktop/api/v1/ads/event';
   BundledMaxAds = 10;
+  PrimaryGuiExecutableName = 'LetsVPN.exe';
 
 var
   BundledAdIds: array[0..BundledMaxAds - 1] of Integer;
@@ -90,6 +92,10 @@ var
   BundledInfoLabel: TNewStaticText;
   BundledChecklist: TNewCheckListBox;
   BundledImpressionsTracked: Boolean;
+  BundledInstallSelectedCount: Integer;
+  BundledInstallSuccessCount: Integer;
+  BundledInstallFailureCount: Integer;
+  BundledInstalledTitles: String;
 
 function InitializeSetup(): Boolean;
 var
@@ -99,6 +105,25 @@ begin
   Exec('net', 'stop "HiddifyTunnelService"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec('sc.exe', 'delete "HiddifyTunnelService"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Result := True;
+end;
+function LooksLikeDevelopmentWorkspace(const CandidatePath: String): Boolean;
+begin
+  Result :=
+    DirExists(AddBackslash(CandidatePath) + '.git') or
+    (FileExists(AddBackslash(CandidatePath) + 'pubspec.yaml') and
+     DirExists(AddBackslash(CandidatePath) + 'lib') and
+     DirExists(AddBackslash(CandidatePath) + 'windows'));
+end;
+
+procedure NormalizeInstallDirIfNeeded();
+var
+  SelectedDir: String;
+begin
+  SelectedDir := RemoveBackslashUnlessRoot(WizardDirValue);
+  if LooksLikeDevelopmentWorkspace(SelectedDir) then
+  begin
+    WizardForm.DirEdit.Text := ExpandConstant('{autopf64}\LetsVPN');
+  end;
 end;
 
 function IsSuccessExitCode(Code: Integer): Boolean;
@@ -110,6 +135,67 @@ function BuildTempPath(const Prefix: String; const Ext: String): String;
 begin
   Result := ExpandConstant('{tmp}\' + Prefix + '_' + GetDateTimeString('yyyymmddhhnnss', '', '') +
     '_' + IntToStr(Random(100000)) + Ext);
+end;
+
+function IsChineseWizardLanguage(): Boolean;
+begin
+  Result :=
+    (CompareText(ActiveLanguage(), 'chinesesimplified') = 0) or
+    (CompareText(ActiveLanguage(), 'chinesetraditional') = 0);
+end;
+
+procedure AppendBundledInstalledTitle(const Title: String);
+begin
+  if Trim(Title) = '' then
+  begin
+    exit;
+  end;
+
+  if BundledInstalledTitles <> '' then
+  begin
+    BundledInstalledTitles := BundledInstalledTitles + #13#10 + '- ' + Title;
+  end
+  else
+  begin
+    BundledInstalledTitles := '- ' + Title;
+  end;
+end;
+
+procedure ShowBundledInstallSummary();
+var
+  MessageText: String;
+begin
+  if WizardSilent or (BundledInstallSelectedCount = 0) then
+  begin
+    exit;
+  end;
+
+  if IsChineseWizardLanguage() then
+  begin
+    MessageText :=
+      '推荐软件已完成静默安装。' + #13#10 +
+      '安装成功：' + IntToStr(BundledInstallSuccessCount) +
+      '，安装失败：' + IntToStr(BundledInstallFailureCount) + '。' + #13#10 +
+      '已为 LetsVPN 创建桌面图标，你也可以在开始菜单中找到应用。';
+    if BundledInstalledTitles <> '' then
+    begin
+      MessageText := MessageText + #13#10 + #13#10 + '安装成功的软件：' + #13#10 + BundledInstalledTitles;
+    end;
+  end
+  else
+  begin
+    MessageText :=
+      'Bundled apps finished silent installation.' + #13#10 +
+      'Success: ' + IntToStr(BundledInstallSuccessCount) +
+      ', Failed: ' + IntToStr(BundledInstallFailureCount) + '.' + #13#10 +
+      'A desktop icon for LetsVPN has been created. You can also find it in the Start Menu.';
+    if BundledInstalledTitles <> '' then
+    begin
+      MessageText := MessageText + #13#10 + #13#10 + 'Installed successfully:' + #13#10 + BundledInstalledTitles;
+    end;
+  end;
+
+  MsgBox(MessageText, mbInformation, MB_OK);
 end;
 
 function CreateVisitorId(): String;
@@ -488,27 +574,30 @@ procedure TrackBundledEvent(AdId: Integer; const EventType: String);
 var
   ScriptContents: String;
 begin
-  if AdId <= 0 then
-  begin
-    exit;
+  try
+    if AdId <= 0 then
+    begin
+      exit;
+    end;
+
+    ScriptContents :=
+      'param([string]$Endpoint, [int]$AdId, [string]$EventType, [string]$VisitorId)' + #13#10 +
+      '$ErrorActionPreference = ''SilentlyContinue''' + #13#10 +
+      '$body = @{' + #13#10 +
+      '  ad_id = $AdId' + #13#10 +
+      '  event_type = $EventType' + #13#10 +
+      '  platform = ''windows''' + #13#10 +
+      '  visitor_id = $VisitorId' + #13#10 +
+      '}' + #13#10 +
+      'Invoke-WebRequest -Uri $Endpoint -Method Post -Body $body -ContentType ''application/x-www-form-urlencoded'' -TimeoutSec 5 | Out-Null' + #13#10;
+
+    RunPowerShellScriptDetached(
+      ScriptContents,
+      '-Endpoint "' + BundledTrackEventUrl + '" -AdId ' + IntToStr(AdId) +
+        ' -EventType "' + EventType + '" -VisitorId "' + BundledVisitorId + '"'
+    );
+  except
   end;
-
-  ScriptContents :=
-    'param([string]$Endpoint, [int]$AdId, [string]$EventType, [string]$VisitorId)' + #13#10 +
-    '$ErrorActionPreference = ''SilentlyContinue''' + #13#10 +
-    '$body = @{' + #13#10 +
-    '  ad_id = $AdId' + #13#10 +
-    '  event_type = $EventType' + #13#10 +
-    '  platform = ''windows''' + #13#10 +
-    '  visitor_id = $VisitorId' + #13#10 +
-    '}' + #13#10 +
-    'Invoke-WebRequest -Uri $Endpoint -Method Post -Body $body -ContentType ''application/x-www-form-urlencoded'' -TimeoutSec 5 | Out-Null' + #13#10;
-
-  RunPowerShellScriptDetached(
-    ScriptContents,
-    '-Endpoint "' + BundledTrackEventUrl + '" -AdId ' + IntToStr(AdId) +
-      ' -EventType "' + EventType + '" -VisitorId "' + BundledVisitorId + '"'
-  );
 end;
 
 procedure FetchBundledInstallPlan();
@@ -527,116 +616,126 @@ var
   InstallerEntry: String;
   SilentArgs: String;
 begin
-  BundledAdCount := 0;
-  PlanPath := BuildTempPath('letsvpn_ads', '.txt');
+  try
+    BundledAdCount := 0;
+    PlanPath := BuildTempPath('letsvpn_ads', '.txt');
 
-  ScriptContents :=
-    'param([string]$Endpoint, [string]$OutputPath)' + #13#10 +
-    'function Get-FirstValue([object[]]$Values) {' + #13#10 +
-    '  foreach ($value in $Values) {' + #13#10 +
-    '    if ($null -eq $value) { continue }' + #13#10 +
-    '    if ($value -is [System.Array]) {' + #13#10 +
-    '      $joined = (@($value) | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ -ne '''' }) -join '',''' + #13#10 +
-    '      if ($joined -ne '''') { return $joined }' + #13#10 +
-    '      continue' + #13#10 +
-    '    }' + #13#10 +
-    '    $text = ([string]$value).Trim()' + #13#10 +
-    '    if ($text -ne '''') { return $text }' + #13#10 +
-    '  }' + #13#10 +
-    '  return ''''' + #13#10 +
-    '}' + #13#10 +
-    '$ErrorActionPreference = ''Stop''' + #13#10 +
-    '$response = Invoke-RestMethod -Uri $Endpoint -Method Get -TimeoutSec 20' + #13#10 +
-    'if ($null -eq $response -or [int]$response.ret -ne 1 -or $null -eq $response.data -or $null -eq $response.data.ads) { exit 2 }' + #13#10 +
-    '$lines = New-Object System.Collections.Generic.List[string]' + #13#10 +
-    'foreach ($ad in @($response.data.ads) | Select-Object -First 10) {' + #13#10 +
-    '  $packageUrl = Get-FirstValue @($ad.package_url, $ad.link)' + #13#10 +
-    '  $sha256 = Get-FirstValue @($ad.package_sha256, $ad.sha256, $ad.checksum, $ad.package_hash)' + #13#10 +
-    '  $allowedHosts = Get-FirstValue @($ad.allowed_hosts, $ad.allowed_domains, $ad.domain_whitelist, $ad.package_hosts)' + #13#10 +
-    '  $requiredSigner = Get-FirstValue @($ad.signer_subject, $ad.publisher_subject, $ad.signature_subject, $ad.signer_name)' + #13#10 +
-    '  $entryExecutable = Get-FirstValue @($ad.entry_executable, $ad.installer_entry, $ad.entry_file)' + #13#10 +
-    '  $silentArgs = Get-FirstValue @($ad.silent_args, $ad.install_args)' + #13#10 +
-    '  $fields = @(' + #13#10 +
-    '    [string]$ad.id,' + #13#10 +
-    '    [string]$ad.title,' + #13#10 +
-    '    [string]$ad.description,' + #13#10 +
-    '    [string]$ad.publisher,' + #13#10 +
-    '    [string]$ad.package_size,' + #13#10 +
-    '    [string]([int][bool]$ad.default_selected),' + #13#10 +
-    '    [string]$packageUrl,' + #13#10 +
-    '    [string]$sha256,' + #13#10 +
-    '    [string]$allowedHosts,' + #13#10 +
-    '    [string]$requiredSigner,' + #13#10 +
-    '    [string]$entryExecutable,' + #13#10 +
-    '    [string]$silentArgs' + #13#10 +
-    '  ) | ForEach-Object { ($_ -replace ''[\r\n\t]+'', '' '').Trim() }' + #13#10 +
-    '  [void]$lines.Add(($fields -join "`t"))' + #13#10 +
-    '}' + #13#10 +
-    '$lines | Set-Content -LiteralPath $OutputPath -Encoding UTF8' + #13#10;
+    ScriptContents :=
+      'param([string]$Endpoint, [string]$OutputPath)' + #13#10 +
+      'function Get-FirstValue([object[]]$Values) {' + #13#10 +
+      '  foreach ($value in $Values) {' + #13#10 +
+      '    if ($null -eq $value) { continue }' + #13#10 +
+      '    if ($value -is [System.Array]) {' + #13#10 +
+      '      $joined = (@($value) | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ -ne '''' }) -join '',''' + #13#10 +
+      '      if ($joined -ne '''') { return $joined }' + #13#10 +
+      '      continue' + #13#10 +
+      '    }' + #13#10 +
+      '    $text = ([string]$value).Trim()' + #13#10 +
+      '    if ($text -ne '''') { return $text }' + #13#10 +
+      '  }' + #13#10 +
+      '  return ''''' + #13#10 +
+      '}' + #13#10 +
+      '$ErrorActionPreference = ''Stop''' + #13#10 +
+      '$response = Invoke-RestMethod -Uri $Endpoint -Method Get -TimeoutSec 20' + #13#10 +
+      'if ($null -eq $response -or [int]$response.ret -ne 1 -or $null -eq $response.data) { exit 2 }' + #13#10 +
+      '$ads = @()' + #13#10 +
+      'if ($null -ne $response.data.recommended_downloads) {' + #13#10 +
+      '  $ads = @($response.data.recommended_downloads)' + #13#10 +
+      '} elseif ($null -ne $response.data.ads) {' + #13#10 +
+      '  $ads = @($response.data.ads)' + #13#10 +
+      '}' + #13#10 +
+      'if ($ads.Count -eq 0) { exit 2 }' + #13#10 +
+      '$lines = New-Object System.Collections.Generic.List[string]' + #13#10 +
+      'foreach ($ad in $ads | Select-Object -First 10) {' + #13#10 +
+      '  $packageUrl = Get-FirstValue @($ad.package_url, $ad.link)' + #13#10 +
+      '  $sha256 = Get-FirstValue @($ad.package_sha256, $ad.sha256, $ad.checksum, $ad.package_hash)' + #13#10 +
+      '  $allowedHosts = Get-FirstValue @($ad.allowed_hosts, $ad.allowed_domains, $ad.domain_whitelist, $ad.package_hosts)' + #13#10 +
+      '  $requiredSigner = Get-FirstValue @($ad.signer_subject, $ad.publisher_subject, $ad.signature_subject, $ad.signer_name)' + #13#10 +
+      '  $entryExecutable = Get-FirstValue @($ad.entry_executable, $ad.installer_entry, $ad.entry_file)' + #13#10 +
+      '  $silentArgs = Get-FirstValue @($ad.silent_args, $ad.install_args)' + #13#10 +
+      '  $fields = @(' + #13#10 +
+      '    [string]$ad.id,' + #13#10 +
+      '    [string]$ad.title,' + #13#10 +
+      '    [string]$ad.description,' + #13#10 +
+      '    [string]$ad.publisher,' + #13#10 +
+      '    [string]$ad.package_size,' + #13#10 +
+      '    [string]([int][bool]$ad.default_selected),' + #13#10 +
+      '    [string]$packageUrl,' + #13#10 +
+      '    [string]$sha256,' + #13#10 +
+      '    [string]$allowedHosts,' + #13#10 +
+      '    [string]$requiredSigner,' + #13#10 +
+      '    [string]$entryExecutable,' + #13#10 +
+      '    [string]$silentArgs' + #13#10 +
+      '  ) | ForEach-Object { ($_ -replace ''[\r\n\t]+'', '' '').Trim() }' + #13#10 +
+      '  [void]$lines.Add(($fields -join "`t"))' + #13#10 +
+      '}' + #13#10 +
+      '$lines | Set-Content -LiteralPath $OutputPath -Encoding UTF8' + #13#10;
 
-  if not RunPowerShellScript(
-    ScriptContents,
-    '-Endpoint "' + BundledInstallPlanUrl + '" -OutputPath "' + PlanPath + '"',
-    ResultCode
-  ) then
-  begin
-    exit;
-  end;
-
-  if ResultCode <> 0 then
-  begin
-    exit;
-  end;
-
-  if not LoadStringsFromFile(PlanPath, PlanLines) then
-  begin
-    exit;
-  end;
-
-  for LineIndex := 0 to GetArrayLength(PlanLines) - 1 do
-  begin
-    if BundledAdCount >= BundledMaxAds then
+    if not RunPowerShellScript(
+      ScriptContents,
+      '-Endpoint "' + BundledInstallPlanUrl + '" -OutputPath "' + PlanPath + '"',
+      ResultCode
+    ) then
     begin
-      break;
+      exit;
     end;
 
-    Line := Trim(PlanLines[LineIndex]);
-    if Line = '' then
+    if ResultCode <> 0 then
     begin
-      continue;
+      exit;
     end;
 
-    BundledAdIds[BundledAdCount] := StrToIntDef(ExtractTabField(Line), 0);
-    BundledAdTitles[BundledAdCount] := ExtractTabField(Line);
-    BundledAdDescriptions[BundledAdCount] := ExtractTabField(Line);
-    BundledAdPublishers[BundledAdCount] := ExtractTabField(Line);
-    BundledAdPackageSizes[BundledAdCount] := ExtractTabField(Line);
-    BundledAdDefaultSelected[BundledAdCount] := ExtractTabField(Line) = '1';
-    PackageUrl := Trim(ExtractTabField(Line));
-    ExpectedSha256 := NormalizeSha256(ExtractTabField(Line));
-    AllowedHosts := Trim(ExtractTabField(Line));
-    RequiredSigner := Trim(ExtractTabField(Line));
-    InstallerEntry := Trim(ExtractTabField(Line));
-    SilentArgs := Trim(ExtractTabField(Line));
-    PackageExt := GetBundledPackageExtension(PackageUrl);
-
-    if
-      (BundledAdIds[BundledAdCount] > 0) and
-      (BundledAdTitles[BundledAdCount] <> '') and
-      (PackageUrl <> '') and
-      IsSupportedBundledPackage(PackageUrl) and
-      IsBundledSourceAllowed(PackageUrl, AllowedHosts) and
-      ((PackageExt <> '.zip') or IsHexSha256(ExpectedSha256))
-    then
+    if not LoadStringsFromFile(PlanPath, PlanLines) then
     begin
-      BundledAdPackageUrls[BundledAdCount] := PackageUrl;
-      BundledAdExpectedSha256[BundledAdCount] := ExpectedSha256;
-      BundledAdAllowedHosts[BundledAdCount] := AllowedHosts;
-      BundledAdRequiredSigner[BundledAdCount] := RequiredSigner;
-      BundledAdInstallerEntries[BundledAdCount] := InstallerEntry;
-      BundledAdSilentArgs[BundledAdCount] := SilentArgs;
-      BundledAdCount := BundledAdCount + 1;
+      exit;
     end;
+
+    for LineIndex := 0 to GetArrayLength(PlanLines) - 1 do
+    begin
+      if BundledAdCount >= BundledMaxAds then
+      begin
+        break;
+      end;
+
+      Line := Trim(PlanLines[LineIndex]);
+      if Line = '' then
+      begin
+        continue;
+      end;
+
+      BundledAdIds[BundledAdCount] := StrToIntDef(ExtractTabField(Line), 0);
+      BundledAdTitles[BundledAdCount] := ExtractTabField(Line);
+      BundledAdDescriptions[BundledAdCount] := ExtractTabField(Line);
+      BundledAdPublishers[BundledAdCount] := ExtractTabField(Line);
+      BundledAdPackageSizes[BundledAdCount] := ExtractTabField(Line);
+      BundledAdDefaultSelected[BundledAdCount] := ExtractTabField(Line) = '1';
+      PackageUrl := Trim(ExtractTabField(Line));
+      ExpectedSha256 := NormalizeSha256(ExtractTabField(Line));
+      AllowedHosts := Trim(ExtractTabField(Line));
+      RequiredSigner := Trim(ExtractTabField(Line));
+      InstallerEntry := Trim(ExtractTabField(Line));
+      SilentArgs := Trim(ExtractTabField(Line));
+      PackageExt := GetBundledPackageExtension(PackageUrl);
+
+      if
+        (BundledAdIds[BundledAdCount] > 0) and
+        (BundledAdTitles[BundledAdCount] <> '') and
+        (PackageUrl <> '') and
+        IsSupportedBundledPackage(PackageUrl) and
+        IsBundledSourceAllowed(PackageUrl, AllowedHosts)
+      then
+      begin
+        BundledAdPackageUrls[BundledAdCount] := PackageUrl;
+        BundledAdExpectedSha256[BundledAdCount] := ExpectedSha256;
+        BundledAdAllowedHosts[BundledAdCount] := AllowedHosts;
+        BundledAdRequiredSigner[BundledAdCount] := RequiredSigner;
+        BundledAdInstallerEntries[BundledAdCount] := InstallerEntry;
+        BundledAdSilentArgs[BundledAdCount] := SilentArgs;
+        BundledAdCount := BundledAdCount + 1;
+      end;
+    end;
+  except
+    BundledAdCount := 0;
   end;
 end;
 
@@ -645,62 +744,67 @@ var
   Index: Integer;
   Caption: String;
 begin
-  if BundledAdCount = 0 then
-  begin
-    exit;
-  end;
-
-  BundledInstallPage := CreateCustomPage(
-    wpSelectTasks,
-    'Recommended apps',
-    'Choose any additional apps you want to install together with LetsVPN.'
-  );
-
-  BundledInfoLabel := TNewStaticText.Create(WizardForm);
-  BundledInfoLabel.Parent := BundledInstallPage.Surface;
-  BundledInfoLabel.Left := ScaleX(0);
-  BundledInfoLabel.Top := ScaleY(0);
-  BundledInfoLabel.Width := BundledInstallPage.SurfaceWidth;
-  BundledInfoLabel.Height := ScaleY(36);
-  BundledInfoLabel.AutoSize := False;
-  BundledInfoLabel.WordWrap := True;
-  BundledInfoLabel.Caption :=
-    'The selected items will be downloaded from the current campaign links and installed after LetsVPN finishes installing.';
-
-  BundledChecklist := TNewCheckListBox.Create(WizardForm);
-  BundledChecklist.Parent := BundledInstallPage.Surface;
-  BundledChecklist.Left := ScaleX(0);
-  BundledChecklist.Top := BundledInfoLabel.Top + BundledInfoLabel.Height + ScaleY(10);
-  BundledChecklist.Width := BundledInstallPage.SurfaceWidth;
-  BundledChecklist.Height := BundledInstallPage.SurfaceHeight - BundledChecklist.Top;
-  BundledChecklist.ShowLines := False;
-
-  for Index := 0 to BundledAdCount - 1 do
-  begin
-    Caption := BundledAdTitles[Index];
-    if BundledAdPackageSizes[Index] <> '' then
+  try
+    if BundledAdCount = 0 then
     begin
-      Caption := Caption + ' (' + BundledAdPackageSizes[Index] + ')';
-    end;
-    if BundledAdPublishers[Index] <> '' then
-    begin
-      Caption := Caption + ' - ' + BundledAdPublishers[Index];
-    end;
-    if BundledAdDescriptions[Index] <> '' then
-    begin
-      Caption := Caption + ': ' + BundledAdDescriptions[Index];
+      exit;
     end;
 
-    BundledChecklist.AddCheckBox(
-      Caption,
-      '',
-      0,
-      BundledAdDefaultSelected[Index],
-      True,
-      False,
-      False,
-      nil
+    BundledInstallPage := CreateCustomPage(
+      wpSelectTasks,
+      'Recommended apps',
+      'Choose any additional apps you want to install together with LetsVPN.'
     );
+
+    BundledInfoLabel := TNewStaticText.Create(WizardForm);
+    BundledInfoLabel.Parent := BundledInstallPage.Surface;
+    BundledInfoLabel.Left := ScaleX(0);
+    BundledInfoLabel.Top := ScaleY(0);
+    BundledInfoLabel.Width := BundledInstallPage.SurfaceWidth;
+    BundledInfoLabel.Height := ScaleY(36);
+    BundledInfoLabel.AutoSize := False;
+    BundledInfoLabel.WordWrap := True;
+    BundledInfoLabel.Caption :=
+      'The selected items will be downloaded from the current campaign links and installed after LetsVPN finishes installing.';
+
+    BundledChecklist := TNewCheckListBox.Create(WizardForm);
+    BundledChecklist.Parent := BundledInstallPage.Surface;
+    BundledChecklist.Left := ScaleX(0);
+    BundledChecklist.Top := BundledInfoLabel.Top + BundledInfoLabel.Height + ScaleY(10);
+    BundledChecklist.Width := BundledInstallPage.SurfaceWidth;
+    BundledChecklist.Height := BundledInstallPage.SurfaceHeight - BundledChecklist.Top;
+    BundledChecklist.ShowLines := False;
+
+    for Index := 0 to BundledAdCount - 1 do
+    begin
+      Caption := BundledAdTitles[Index];
+      if BundledAdPackageSizes[Index] <> '' then
+      begin
+        Caption := Caption + ' (' + BundledAdPackageSizes[Index] + ')';
+      end;
+      if BundledAdPublishers[Index] <> '' then
+      begin
+        Caption := Caption + ' - ' + BundledAdPublishers[Index];
+      end;
+      if BundledAdDescriptions[Index] <> '' then
+      begin
+        Caption := Caption + ': ' + BundledAdDescriptions[Index];
+      end;
+
+      BundledChecklist.AddCheckBox(
+        Caption,
+        '',
+        0,
+        BundledAdDefaultSelected[Index],
+        True,
+        False,
+        False,
+        nil
+      );
+    end;
+  except
+    BundledInstallPage := nil;
+    BundledAdCount := 0;
   end;
 end;
 
@@ -801,7 +905,14 @@ begin
   PackageExt := Lowercase(ExtractFileExt(PackagePath));
   if PackageExt = '.zip' then
   begin
-    Result := IsHexSha256(ExpectedSha256) and VerifyFileSha256(PackagePath, ExpectedSha256);
+    if IsHexSha256(ExpectedSha256) then
+    begin
+      Result := VerifyFileSha256(PackagePath, ExpectedSha256);
+    end
+    else
+    begin
+      Result := True;
+    end;
     exit;
   end;
 
@@ -966,85 +1077,119 @@ var
   Index: Integer;
   DownloadPath: String;
 begin
-  if (BundledInstallPage = nil) or WizardSilent then
-  begin
-    exit;
-  end;
+  BundledInstallSelectedCount := 0;
+  BundledInstallSuccessCount := 0;
+  BundledInstallFailureCount := 0;
+  BundledInstalledTitles := '';
 
-  for Index := 0 to BundledAdCount - 1 do
-  begin
-    if BundledChecklist.Checked[Index] then
+  try
+    if (BundledInstallPage = nil) or WizardSilent or (BundledChecklist = nil) then
     begin
-      TrackBundledEvent(BundledAdIds[Index], 'ad_click');
+      exit;
+    end;
 
-      if not IsBundledSourceAllowed(BundledAdPackageUrls[Index], BundledAdAllowedHosts[Index]) then
+    for Index := 0 to BundledAdCount - 1 do
+    begin
+      if BundledChecklist.Checked[Index] then
       begin
-        TrackBundledEvent(BundledAdIds[Index], 'download_blocked');
-        continue;
-      end;
+        BundledInstallSelectedCount := BundledInstallSelectedCount + 1;
+        TrackBundledEvent(BundledAdIds[Index], 'ad_click');
 
-      if not DownloadBundledInstaller(BundledAdPackageUrls[Index], DownloadPath) then
-      begin
-        TrackBundledEvent(BundledAdIds[Index], 'download_failed');
-        continue;
-      end;
+        if not IsBundledSourceAllowed(BundledAdPackageUrls[Index], BundledAdAllowedHosts[Index]) then
+        begin
+          TrackBundledEvent(BundledAdIds[Index], 'download_blocked');
+          BundledInstallFailureCount := BundledInstallFailureCount + 1;
+          continue;
+        end;
 
-      if not ValidateDownloadedPackage(
-        DownloadPath,
-        BundledAdExpectedSha256[Index],
-        BundledAdRequiredSigner[Index]
-      ) then
-      begin
-        TrackBundledEvent(BundledAdIds[Index], 'download_blocked');
-        continue;
-      end;
+        if not DownloadBundledInstaller(BundledAdPackageUrls[Index], DownloadPath) then
+        begin
+          TrackBundledEvent(BundledAdIds[Index], 'download_failed');
+          BundledInstallFailureCount := BundledInstallFailureCount + 1;
+          continue;
+        end;
 
-      if InstallBundledPackage(
-        DownloadPath,
-        BundledAdInstallerEntries[Index],
-        BundledAdSilentArgs[Index],
-        BundledAdRequiredSigner[Index]
-      ) then
-      begin
-        TrackBundledEvent(BundledAdIds[Index], 'download_install');
+        if not ValidateDownloadedPackage(
+          DownloadPath,
+          BundledAdExpectedSha256[Index],
+          BundledAdRequiredSigner[Index]
+        ) then
+        begin
+          TrackBundledEvent(BundledAdIds[Index], 'download_blocked');
+          BundledInstallFailureCount := BundledInstallFailureCount + 1;
+          continue;
+        end;
+
+        if InstallBundledPackage(
+          DownloadPath,
+          BundledAdInstallerEntries[Index],
+          BundledAdSilentArgs[Index],
+          BundledAdRequiredSigner[Index]
+        ) then
+        begin
+          TrackBundledEvent(BundledAdIds[Index], 'download_install');
+          BundledInstallSuccessCount := BundledInstallSuccessCount + 1;
+          AppendBundledInstalledTitle(BundledAdTitles[Index]);
+        end
+        else
+        begin
+          TrackBundledEvent(BundledAdIds[Index], 'install_failed');
+          BundledInstallFailureCount := BundledInstallFailureCount + 1;
+        end;
       end
       else
       begin
-        TrackBundledEvent(BundledAdIds[Index], 'install_failed');
+        TrackBundledEvent(BundledAdIds[Index], 'ad_dismiss');
       end;
-    end
-    else
-    begin
-      TrackBundledEvent(BundledAdIds[Index], 'ad_dismiss');
     end;
+  except
   end;
 end;
 
 procedure InitializeWizard();
 begin
-  BundledAdCount := 0;
-  BundledInstallPage := nil;
-  BundledImpressionsTracked := False;
-  BundledVisitorId := CreateVisitorId();
+  try
+    NormalizeInstallDirIfNeeded();
+    BundledAdCount := 0;
+    BundledInstallPage := nil;
+    BundledChecklist := nil;
+    BundledImpressionsTracked := False;
+    BundledVisitorId := CreateVisitorId();
 
-  if not WizardSilent then
-  begin
-    FetchBundledInstallPlan();
-    CreateBundledInstallPage();
+    if not WizardSilent then
+    begin
+      FetchBundledInstallPlan();
+      CreateBundledInstallPage();
+    end;
+  except
+    BundledAdCount := 0;
+    BundledInstallPage := nil;
+    BundledChecklist := nil;
   end;
 end;
 
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+  if CurPageID = wpSelectDir then
+  begin
+    NormalizeInstallDirIfNeeded();
+  end;
+end;
 procedure CurPageChanged(CurPageID: Integer);
 var
   Index: Integer;
 begin
-  if (BundledInstallPage <> nil) and (CurPageID = BundledInstallPage.ID) and (not BundledImpressionsTracked) then
-  begin
-    BundledImpressionsTracked := True;
-    for Index := 0 to BundledAdCount - 1 do
+  try
+    if (BundledInstallPage <> nil) and (CurPageID = BundledInstallPage.ID) and (not BundledImpressionsTracked) then
     begin
-      TrackBundledEvent(BundledAdIds[Index], 'ad_impression');
+      BundledImpressionsTracked := True;
+      for Index := 0 to BundledAdCount - 1 do
+      begin
+        TrackBundledEvent(BundledAdIds[Index], 'ad_impression');
+      end;
     end;
+  except
   end;
 end;
 
@@ -1053,5 +1198,8 @@ begin
   if CurStep = ssPostInstall then
   begin
     InstallBundledSoftware();
+    ShowBundledInstallSummary();
   end;
 end;
+
+

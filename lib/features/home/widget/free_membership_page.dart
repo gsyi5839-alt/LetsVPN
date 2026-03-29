@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hiddify/features/home/widget/windows_localized_strings.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -13,6 +14,7 @@ class FreeMembershipPage extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final locale = Localizations.localeOf(context);
     final isLoading = useState(false);
 
     useEffect(() {
@@ -92,9 +94,9 @@ class FreeMembershipPage extends HookConsumerWidget {
                                 color: Colors.white.withValues(alpha: .25),
                                 borderRadius: BorderRadius.circular(4),
                               ),
-                              child: const Text(
-                                'FREE',
-                                style: TextStyle(
+                              child: Text(
+                                windowsText(locale, 'free.badge'),
+                                style: const TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.w900,
                                   color: Colors.white,
@@ -108,13 +110,13 @@ class FreeMembershipPage extends HookConsumerWidget {
                     ),
                     const Gap(28),
                     // 标题
-                    const Text(
-                      '免费领会员',
+                    Text(
+                      windowsText(locale, 'free.title'),
                       style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
                     ),
                     const Gap(10),
-                    const Text(
-                      '每天都来点一点，免费会员随便领！',
+                    Text(
+                      windowsText(locale, 'free.subtitle'),
                       style: TextStyle(fontSize: 13, color: Color(0xFF666666)),
                       textAlign: TextAlign.center,
                     ),
@@ -145,8 +147,8 @@ class FreeMembershipPage extends HookConsumerWidget {
                                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                 ),
                               )
-                            : const Text(
-                                '试试运气',
+                            : Text(
+                                windowsText(locale, 'free.button'),
                                 style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
                               ),
                       ),
@@ -160,10 +162,18 @@ class FreeMembershipPage extends HookConsumerWidget {
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: const [
-                          _StatItem(label: '今日领取人数', value: '33306', unit: '人'),
+                        children: [
+                          _StatItem(
+                            label: windowsText(locale, 'free.todayCount'),
+                            value: '33306',
+                            unit: locale.toString() == 'en' ? '' : windowsText(locale, 'common.peopleUnit'),
+                          ),
                           _Divider(),
-                          _StatItem(label: '累计领取会员', value: '24980', unit: '小时'),
+                          _StatItem(
+                            label: windowsText(locale, 'free.totalHours'),
+                            value: '24980',
+                            unit: locale.toString() == 'en' ? '' : windowsText(locale, 'common.hoursUnit'),
+                          ),
                         ],
                       ),
                     ),
@@ -177,7 +187,7 @@ class FreeMembershipPage extends HookConsumerWidget {
                 child: IconButton(
                   icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: Color(0xFF888888)),
                   onPressed: () => context.goNamed('home'),
-                  tooltip: '返回',
+                  tooltip: windowsText(locale, 'common.back'),
                 ),
               ),
             ],

@@ -125,12 +125,12 @@ class AndroidAppsPage extends HookConsumerWidget {
                 onChanged: (_) => ref.read(selectedNotifier.notifier).onChanged(packageName),
               );
             } else {
-              throw Exception('Data type is not supported');
+              throw Exception(t.errors.unexpected);
             }
           },
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(child: Text('Error: $error')),
+        error: (error, stack) => Center(child: Text('${t.errors.unexpected}: $error')),
       ),
     );
   }

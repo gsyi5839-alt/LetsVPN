@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:hiddify/core/haptic/haptic_service.dart';
+import 'package:hiddify/core/localization/locale_preferences.dart';
 import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/core/preferences/general_preferences.dart';
 import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
@@ -9,6 +10,7 @@ import 'package:hiddify/features/connection/data/connection_data_providers.dart'
 import 'package:hiddify/features/connection/data/connection_repository.dart';
 import 'package:hiddify/features/connection/model/connection_failure.dart';
 import 'package:hiddify/features/connection/model/connection_status.dart';
+import 'package:hiddify/features/home/widget/windows_localized_strings.dart';
 import 'package:hiddify/features/profile/data/profile_data_providers.dart';
 import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/model/profile_sort_enum.dart';
@@ -331,7 +333,8 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
   }
 
   Future<void> _showMissingConfigAlert() async {
-    const message = '当前节点配置丢失，已自动尝试同步订阅与切换节点但仍失败，请重新登录后重试。';
+    final locale = ref.read(localePreferencesProvider).flutterLocale;
+    final message = windowsText(locale, 'connection.missingConfig');
     final err = ConnectionFailure.invalidConfig(message);
     await ref.read(Preferences.startedByUser.notifier).update(false);
     await ref

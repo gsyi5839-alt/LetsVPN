@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui';
 
 import 'package:dartx/dartx.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
@@ -7,6 +8,7 @@ import 'package:hiddify/core/app_info/app_info_provider.dart';
 import 'package:hiddify/core/model/environment.dart';
 import 'package:hiddify/core/preferences/preferences_provider.dart';
 import 'package:hiddify/features/home/widget/home_page.dart';
+import 'package:hiddify/features/home/widget/windows_localized_strings.dart';
 import 'package:hiddify/utils/platform_utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -50,11 +52,20 @@ Future<bool> runDesktopSubWindowIfNeeded({required List<String> args, required E
       return true;
     }
 
-    _runSubWindowFallbackApp(title: '窗口加载失败', message: '未识别的子窗口类型: ${windowType ?? 'null'}');
+    final locale = PlatformDispatcher.instance.locale;
+    _runSubWindowFallbackApp(
+      title: windowsText(locale, 'desktop.subWindowLoadFailed'),
+      message: windowsText(locale, 'desktop.unknownSubWindow', params: {'value': windowType ?? 'null'}),
+    );
   } catch (error, stackTrace) {
     debugPrint('desktop sub window init failed: $error');
     debugPrint('$stackTrace');
-    _runSubWindowFallbackApp(title: '窗口加载失败', message: '登录窗口初始化异常，请关闭后重试。', details: '$error');
+    final locale = PlatformDispatcher.instance.locale;
+    _runSubWindowFallbackApp(
+      title: windowsText(locale, 'desktop.subWindowLoadFailed'),
+      message: windowsText(locale, 'desktop.loginInitFailed'),
+      details: '$error',
+    );
   }
   return true;
 }

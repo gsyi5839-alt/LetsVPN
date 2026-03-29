@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:gap/gap.dart';
+import 'package:hiddify/features/home/widget/windows_localized_strings.dart';
 import 'package:hiddify/utils/platform_utils.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -9,6 +10,7 @@ class SplashPage extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
+    final locale = Localizations.localeOf(context);
     final animController = useAnimationController(
       duration: const Duration(milliseconds: 3000),
     );
@@ -21,11 +23,11 @@ class SplashPage extends HookWidget {
 
     final String statusText;
     if (progress < 0.35) {
-      statusText = '初始化中...';
+      statusText = windowsText(locale, 'splash.initializing');
     } else if (progress < 0.65) {
-      statusText = '检查网卡配置...';
+      statusText = windowsText(locale, 'splash.network');
     } else {
-      statusText = '初始化 SDK...';
+      statusText = windowsText(locale, 'splash.sdk');
     }
 
     return Scaffold(
@@ -50,7 +52,7 @@ class SplashPage extends HookWidget {
                 ),
                 const Gap(28),
                 const Text(
-                  '快连 VPN',
+                  'LetsVPN',
                   style: TextStyle(
                     fontSize: 36,
                     fontWeight: FontWeight.w700,
@@ -59,8 +61,8 @@ class SplashPage extends HookWidget {
                   ),
                 ),
                 const Gap(14),
-                const Text(
-                  '永远能连上的ＶＰＮ',
+                Text(
+                  windowsText(locale, 'splash.subtitle'),
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w400,

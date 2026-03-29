@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hiddify/features/home/widget/windows_localized_strings.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -12,17 +13,6 @@ class _MessageItem {
   final String body;
 }
 
-const _kMessages = [
-  _MessageItem(
-    title: '搞定 Gemini 报错，看这篇就够了',
-    body: 'Gemini 频繁报错、提示地区不支持？快连已完成专项优化，教你三招彻底告别这些抓狂时刻。',
-  ),
-  _MessageItem(
-    title: '保护您的快连 VPN 服务不被盗取',
-    body: '请您认准官方渠道充值，并且妥善保管好您的订单号，这是快连 VPN 售后的唯一保障。',
-  ),
-];
-
 class MessagesPage extends HookConsumerWidget {
   const MessagesPage({super.key});
 
@@ -31,6 +21,18 @@ class MessagesPage extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final locale = Localizations.localeOf(context);
+    final messages = [
+      _MessageItem(
+        title: windowsText(locale, 'messages.geminiTitle'),
+        body: windowsText(locale, 'messages.geminiBody'),
+      ),
+      _MessageItem(
+        title: windowsText(locale, 'messages.securityTitle'),
+        body: windowsText(locale, 'messages.securityBody'),
+      ),
+    ];
+
     useEffect(() {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         await windowManager.setSize(_windowSize);
@@ -53,10 +55,10 @@ class MessagesPage extends HookConsumerWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 52, 24, 24),
                 child: ListView.separated(
-                  itemCount: _kMessages.length,
+                  itemCount: messages.length,
                   separatorBuilder: (context, index) => const Gap(12),
                   itemBuilder: (context, index) {
-                    final msg = _kMessages[index];
+                    final msg = messages[index];
                     return _MessageCard(message: msg);
                   },
                 ),
@@ -68,18 +70,18 @@ class MessagesPage extends HookConsumerWidget {
                 child: IconButton(
                   icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: Color(0xFF888888)),
                   onPressed: () => context.goNamed('home'),
-                  tooltip: '返回',
+                  tooltip: windowsText(locale, 'common.back'),
                 ),
               ),
               // 页面标题
-              const Positioned(
+              Positioned(
                 top: 14,
                 left: 0,
                 right: 0,
                 child: Center(
                   child: Text(
-                    '消息中心',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A)),
+                    windowsText(locale, 'messages.title'),
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A)),
                   ),
                 ),
               ),

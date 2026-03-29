@@ -1,8 +1,11 @@
 import 'dart:convert';
 
+import 'package:hiddify/core/localization/locale_preferences.dart';
+import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/core/preferences/preferences_provider.dart';
 import 'package:hiddify/features/auth/data/auth_api_service.dart';
 import 'package:hiddify/features/auth/model/auth_models.dart';
+import 'package:hiddify/features/home/widget/windows_localized_strings.dart';
 import 'package:hiddify/features/profile/data/profile_data_providers.dart';
 import 'package:hiddify/features/profile/data/profile_repository.dart';
 import 'package:hiddify/features/profile/model/profile_entity.dart';
@@ -82,9 +85,10 @@ class AuthNotifier extends StateNotifier<AuthState> with InfraLogger {
 
   /// 账号密码登录
   Future<bool> login(String account, String password) async {
+    final locale = _ref.read(localePreferencesProvider).flutterLocale;
     state = state.copyWith(isLoading: true);
     try {
-      final result = await _api.login(account, password);
+      final result = await _api.login(account, password, fallbackErrorMessage: windowsText(locale, 'auth.loginFailed'));
       await _saveAuth(result);
       state = AuthState(isLoggedIn: true, token: result.token, account: result.user.account, uuid: result.user.uuid);
       // 登录成功后自动添加订阅
@@ -97,16 +101,21 @@ class AuthNotifier extends StateNotifier<AuthState> with InfraLogger {
       return false;
     } on Exception catch (e) {
       loggy.error('login error', e);
-      state = state.copyWith(isLoading: false, error: '网络错误，请稍后重试');
+      state = state.copyWith(isLoading: false, error: windowsText(locale, 'auth.networkError'));
       return false;
     }
   }
 
   /// 注册新账号
   Future<bool> register(String account, String password) async {
+    final locale = _ref.read(localePreferencesProvider).flutterLocale;
     state = state.copyWith(isLoading: true);
     try {
-      final result = await _api.register(account, password);
+      final result = await _api.register(
+        account,
+        password,
+        fallbackErrorMessage: windowsText(locale, 'auth.registerFailed'),
+      );
       await _saveAuth(result);
       state = AuthState(isLoggedIn: true, token: result.token, account: result.user.account, uuid: result.user.uuid);
       // 注册成功后自动添加订阅
@@ -119,30 +128,36 @@ class AuthNotifier extends StateNotifier<AuthState> with InfraLogger {
       return false;
     } on Exception catch (e) {
       loggy.error('register error', e);
-      state = state.copyWith(isLoading: false, error: '网络错误，请稍后重试');
+      state = state.copyWith(isLoading: false, error: windowsText(locale, 'auth.networkError'));
       return false;
     }
   }
 
   /// 浏览器授权登录（按照设备码轮询流程）
   Future<bool> loginWithBrowserAuth() async {
+    final locale = _ref.read(localePreferencesProvider).flutterLocale;
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final deviceAuthInfo = await _api.startDeviceAuth();
+      final deviceAuthInfo = await _api.startDeviceAuth(
+        fallbackErrorMessage: windowsText(locale, 'auth.deviceCodeFailed'),
+      );
       final loginUri = Uri.tryParse(deviceAuthInfo.loginUrl);
       if (loginUri == null) {
-        throw const AuthException('登录链接无效，请重试');
+        throw AuthException(windowsText(locale, 'auth.invalidLoginUrl'));
       }
 
       final opened = await UriUtils.tryLaunch(loginUri);
       if (!opened) {
-        throw AuthException('无法自动打开浏览器，请手动访问：${deviceAuthInfo.loginUrl}');
+        throw AuthException(windowsText(locale, 'auth.openBrowserFailed', params: {'value': deviceAuthInfo.loginUrl}));
       }
 
       final authorizationDeadline = DateTime.now().add(Duration(seconds: deviceAuthInfo.expiresIn));
       final pollIntervalSeconds = deviceAuthInfo.interval > 0 ? deviceAuthInfo.interval : 3;
       while (DateTime.now().isBefore(authorizationDeadline)) {
-        final result = await _api.checkDeviceAuth(deviceAuthInfo.deviceCode);
+        final result = await _api.checkDeviceAuth(
+          deviceAuthInfo.deviceCode,
+          expiredErrorMessage: windowsText(locale, 'auth.authExpired'),
+        );
         if (result != null) {
           await _saveAuth(result);
           state = AuthState(
@@ -159,7 +174,7 @@ class AuthNotifier extends StateNotifier<AuthState> with InfraLogger {
         await Future.delayed(Duration(seconds: pollIntervalSeconds));
       }
 
-      state = state.copyWith(isLoading: false, error: '授权超时，请重试');
+      state = state.copyWith(isLoading: false, error: windowsText(locale, 'auth.timeout'));
       return false;
     } on AuthException catch (error) {
       state = state.copyWith(isLoading: false, error: error.message);
@@ -167,7 +182,9 @@ class AuthNotifier extends StateNotifier<AuthState> with InfraLogger {
     } on Exception catch (error) {
       loggy.error('browser auth error', error);
       final detail = error.toString().replaceFirst('Exception: ', '').trim();
-      final message = detail.isEmpty ? '浏览器授权失败，请稍后重试' : '浏览器授权失败：$detail';
+      final message = detail.isEmpty
+          ? windowsText(locale, 'auth.browserFailed')
+          : windowsText(locale, 'auth.browserFailedDetail', params: {'value': detail});
       state = state.copyWith(isLoading: false, error: message);
       return false;
     }

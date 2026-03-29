@@ -25,6 +25,7 @@ import 'package:hiddify/features/auto_start/notifier/auto_start_notifier.dart';
 import 'package:hiddify/features/connection/model/connection_status.dart';
 import 'package:hiddify/features/connection/notifier/connection_notifier.dart';
 import 'package:hiddify/features/home/widget/connection_button.dart';
+import 'package:hiddify/features/home/widget/windows_localized_strings.dart';
 import 'package:hiddify/features/profile/data/profile_data_providers.dart';
 import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/model/profile_sort_enum.dart';
@@ -67,6 +68,7 @@ class HomePage extends HookConsumerWidget {
       return const _WindowsDesktopHomePage();
     }
 
+    final locale = Localizations.localeOf(context);
     final appInfo = ref.watch(appInfoProvider).requireValue;
     final authState = ref.watch(authNotifierProvider);
     final connectionState = ref.watch(connectionNotifierProvider).valueOrNull ?? const Disconnected();
@@ -80,18 +82,20 @@ class HomePage extends HookConsumerWidget {
     final remainMinutes = hasFutureExpireAt ? max(expireAt!.difference(now).inMinutes, 0) : 0;
     final countdownDigits = hasFutureExpireAt ? _buildCountdownDigits(remainMinutes) : const ['∞', '∞', '∞'];
     final memberHeaderTitle = hasFutureExpireAt
-        ? '会员剩余时长'
-        : (shouldShowExpiredMembership ? '会员已过期，剩余时长 🛒' : '免费会员，剩余时长');
-    final memberTimeUnit = hasFutureExpireAt ? '分钟' : '不限';
-    final memberExpireText = hasFutureExpireAt ? _formatDateTimeValue(expireAt!) : '不限时';
+        ? windowsText(locale, 'home.membershipRemainingMinutes')
+        : (shouldShowExpiredMembership
+              ? windowsText(locale, 'home.membershipExpiredMinutes')
+              : windowsText(locale, 'home.membershipRemainingMinutes'));
+    final memberTimeUnit = hasFutureExpireAt ? windowsText(locale, 'common.minutesUnit') : windowsText(locale, 'home.unlimited');
+    final memberExpireText = hasFutureExpireAt ? _formatDateTimeValue(expireAt!) : windowsText(locale, 'home.unlimited');
     final isDisconnected = connectionState is Disconnected || connectionState is Disconnecting;
     final statusText = switch (connectionState) {
-      Connected() => 'VPN 已连接',
-      Connecting() => 'VPN 连接中',
-      Disconnecting() => 'VPN 断开中',
-      _ => 'VPN 已断开连接',
+      Connected() => windowsText(locale, 'home.connected'),
+      Connecting() => windowsText(locale, 'home.connecting'),
+      Disconnecting() => windowsText(locale, 'home.disconnecting'),
+      _ => windowsText(locale, 'home.disconnected'),
     };
-    final quickActionText = isDisconnected ? '开启快连' : '断开连接';
+    final quickActionText = isDisconnected ? windowsText(locale, 'home.connectNow') : windowsText(locale, 'home.disconnectNow');
     final currentWindowSize = sideMenuExpanded.value ? _expandedWindowSize : _collapsedWindowSize;
 
     useEffect(() {
@@ -157,8 +161,8 @@ class HomePage extends HookConsumerWidget {
                                 ),
                               ),
                               const Gap(10),
-                              const Text(
-                                '网络： 自动',
+                              Text(
+                                windowsText(locale, 'home.networkAuto'),
                                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Color(0xFF3B3B3B)),
                               ),
                               const Gap(18),
@@ -181,14 +185,14 @@ class HomePage extends HookConsumerWidget {
                                 ),
                               ),
                               const Spacer(),
-                              const Padding(
+                              Padding(
                                 padding: EdgeInsets.only(left: 16, right: 16, bottom: 8),
                                 child: Row(
                                   children: [
                                     Text('🤡', style: TextStyle(fontSize: 15)),
                                     Gap(6),
                                     Text(
-                                      '神秘礼物猫咪~',
+                                      windowsText(locale, 'home.desktopGift'),
                                       style: TextStyle(
                                         color: Color(0xFFD25586),
                                         fontWeight: FontWeight.w700,
@@ -228,7 +232,9 @@ class HomePage extends HookConsumerWidget {
                               await ref.read(connectionNotifierProvider.notifier).abortConnection();
                               await ref.read(authNotifierProvider.notifier).logout();
                               ref.invalidate(activeProfileProvider);
-                              ref.read(inAppNotificationControllerProvider).showSuccessToast('已退出账号');
+                              ref.read(
+                                inAppNotificationControllerProvider,
+                              ).showSuccessToast(windowsText(locale, 'toast.loggedOut'));
                             },
                             onExit: () async => await ref.read(windowNotifierProvider.notifier).exit(),
                           ),
@@ -260,6 +266,7 @@ class HomePage extends HookConsumerWidget {
   }
 
   Future<void> _handleQuickAction({required WidgetRef ref, required bool isDisconnected}) async {
+    final locale = ref.read(localePreferencesProvider).flutterLocale;
     if (isDisconnected) {
       if (PlatformUtils.isDesktop) {
         final currentServiceMode = ref.read(ConfigOptions.serviceMode);
@@ -292,7 +299,9 @@ class HomePage extends HookConsumerWidget {
       }
 
       if (activeProfile == null) {
-        ref.read(inAppNotificationControllerProvider).showErrorToast('暂无可用节点，请先登录后同步订阅。');
+        ref.read(
+          inAppNotificationControllerProvider,
+        ).showErrorToast(windowsText(locale, 'toast.noNodesLoginSyncAlt'));
         return;
       }
 
@@ -304,6 +313,7 @@ class HomePage extends HookConsumerWidget {
   }
 
   Future<void> _connectWithDesktopFallback(WidgetRef ref) async {
+    final locale = ref.read(localePreferencesProvider).flutterLocale;
     final connectionNotifier = ref.read(connectionNotifierProvider.notifier);
     await connectionNotifier.toggleConnection();
 
@@ -327,7 +337,7 @@ class HomePage extends HookConsumerWidget {
 
     await ref.read(ConfigOptions.serviceMode.notifier).update(ServiceMode.systemProxy);
     await Future.delayed(const Duration(milliseconds: 250));
-    ref.read(inAppNotificationControllerProvider).showInfoToast('极速模式连接失败，已自动切换到安全模式重试。');
+    ref.read(inAppNotificationControllerProvider).showInfoToast(windowsText(locale, 'toast.fastModeRetry'));
     await connectionNotifier.toggleConnection();
 
     await Future.delayed(const Duration(milliseconds: 1300));
@@ -335,7 +345,7 @@ class HomePage extends HookConsumerWidget {
     final retryState = retrySnapshot.valueOrNull;
     final retryFailed = retrySnapshot.hasError || retryState is Disconnected;
     if (retryFailed) {
-      ref.read(inAppNotificationControllerProvider).showErrorToast('连接失败，请切换国家节点或使用自动匹配最快网络。');
+      ref.read(inAppNotificationControllerProvider).showErrorToast(windowsText(locale, 'toast.connectFailed'));
     }
   }
 }
@@ -353,11 +363,12 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
     final activeProfile = ref.watch(activeProfileProvider).valueOrNull;
     final connectionState = ref.watch(connectionNotifierProvider).valueOrNull ?? const Disconnected();
     final t = ref.watch(translationsProvider).requireValue;
+    final locale = ref.watch(localePreferencesProvider).flutterLocale;
     final selectedSection = useState(_WindowsMenuSection.home);
     final showWelcomeNotification = useState(true);
 
     final selectedCountryIndex = (ref.watch(Preferences.selectedCountryIndex).clamp(0, _kCountries.length - 1)) as int;
-    final selectedCountryName = _kCountries[selectedCountryIndex].$2;
+    final selectedCountryName = windowsCountryName(locale, _kCountries[selectedCountryIndex].$2);
     final serviceMode = ref.watch(ConfigOptions.serviceMode);
     final autoStartState = ref.watch(autoStartNotifierProvider);
 
@@ -371,23 +382,33 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
         : hasFutureExpireAt
         ? remainMinutes.clamp(0, 9999).toString().padLeft(4, '0').split('')
         : const ['0', '0', '0', '0'];
-    final memberHeaderTitle = showLifetime ? '会员状态' : (hasFutureExpireAt ? '会员剩余时长(分钟)' : '会员已过期，剩余时长(分钟)');
-    final memberExpireText = showLifetime ? '不限时' : (expireAt == null ? '不限时' : _formatDateTimeValue(expireAt));
+    final memberHeaderTitle = showLifetime
+        ? windowsText(locale, 'home.membershipStatus')
+        : (hasFutureExpireAt
+              ? windowsText(locale, 'home.membershipRemainingMinutes')
+              : windowsText(locale, 'home.membershipExpiredMinutes'));
+    final memberExpireText = showLifetime
+        ? windowsText(locale, 'home.unlimited')
+        : (expireAt == null ? windowsText(locale, 'home.unlimited') : _formatDateTimeValue(expireAt));
 
     final isDisconnected = connectionState is Disconnected || connectionState is Disconnecting;
     final statusText = switch (connectionState) {
-      Connected() => 'VPN 已连接',
-      Connecting() => 'VPN 连接中',
-      Disconnecting() => 'VPN 断开中',
-      _ => 'VPN 已断开连接',
+      Connected() => windowsText(locale, 'home.connected'),
+      Connecting() => windowsText(locale, 'home.connecting'),
+      Disconnecting() => windowsText(locale, 'home.disconnecting'),
+      _ => windowsText(locale, 'home.disconnected'),
     };
-    final quickActionText = isDisconnected ? '开启快连' : '断开连接';
+    final quickActionText = isDisconnected ? windowsText(locale, 'home.connectNow') : windowsText(locale, 'home.disconnectNow');
 
     final accountName = authState.account?.trim();
     final hasAccountName = accountName != null && accountName.isNotEmpty;
-    final accountDisplayName = authState.isLoggedIn ? (hasAccountName ? accountName : '已登录账户') : '未登录账户';
+    final accountDisplayName = authState.isLoggedIn
+        ? (hasAccountName ? accountName : windowsText(locale, 'home.loggedInAccount'))
+        : windowsText(locale, 'home.guestAccount');
     final accountId = authState.uuid?.trim().isNotEmpty == true ? authState.uuid!.trim() : '441337052';
-    final membershipTagText = showLifetime ? '永久使用' : (hasFutureExpireAt ? '会员中' : '已过期');
+    final membershipTagText = showLifetime
+        ? windowsText(locale, 'home.lifetime')
+        : (hasFutureExpireAt ? windowsText(locale, 'home.active') : windowsText(locale, 'home.expired'));
     final membershipTagTextColor = (showLifetime || hasFutureExpireAt)
         ? const Color(0xFF1F69C9)
         : const Color(0xFF9BA5AF);
@@ -524,7 +545,7 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
                                 ),
                                 const Gap(14),
                                 Text(
-                                  '到期时间: $memberExpireText',
+                                  windowsText(locale, 'home.expireAt', params: {'value': memberExpireText}),
                                   style: const TextStyle(
                                     color: Color(0xFF2C333A),
                                     fontSize: 20 / 1.4,
@@ -549,20 +570,20 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
                           ),
                           _WindowsSidebarItem(
                             icon: Icons.card_giftcard_outlined,
-                            title: '推荐有奖',
+                            title: windowsText(locale, 'home.referral'),
                             selected: selectedSection.value == _WindowsMenuSection.referral,
                             showRedDot: true,
                             onTap: () => selectedSection.value = _WindowsMenuSection.referral,
                           ),
                           _WindowsSidebarItem(
                             icon: Icons.credit_card_outlined,
-                            title: '免费领会员',
+                            title: windowsText(locale, 'home.freeMembership'),
                             selected: selectedSection.value == _WindowsMenuSection.freeMembership,
                             onTap: () => selectedSection.value = _WindowsMenuSection.freeMembership,
                           ),
                           _WindowsSidebarItem(
                             icon: Icons.notifications_none_rounded,
-                            title: '消息中心',
+                            title: windowsText(locale, 'home.messages'),
                             selected: selectedSection.value == _WindowsMenuSection.messages,
                             badgeText: '2',
                             onTap: () => selectedSection.value = _WindowsMenuSection.messages,
@@ -575,7 +596,7 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
                           ),
                           _WindowsSidebarItem(
                             icon: Icons.support_agent_outlined,
-                            title: '在线客服',
+                            title: windowsText(locale, 'home.support'),
                             selected: false,
                             onTap: () => UriUtils.tryLaunch(
                               Uri.parse(
@@ -594,8 +615,8 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
                                   backgroundColor: const Color(0xFF1064D1),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
                                 ),
-                                child: const Text(
-                                  '续费会员',
+                                child: Text(
+                                  windowsText(locale, 'home.renew'),
                                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white),
                                 ),
                               ),
@@ -607,7 +628,7 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
                             child: Row(
                               children: [
                                 Text(
-                                  '版本号： ${appInfo.presentVersion}',
+                                  windowsText(locale, 'home.version', params: {'value': appInfo.presentVersion}),
                                   style: const TextStyle(color: Color(0xFF2F3A45), fontSize: 13),
                                 ),
                                 const Spacer(),
@@ -669,6 +690,7 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
   }
 
   Future<void> _handleQuickAction({required WidgetRef ref, required bool isDisconnected}) async {
+    final locale = ref.read(localePreferencesProvider).flutterLocale;
     if (isDisconnected) {
       final currentServiceMode = ref.read(ConfigOptions.serviceMode);
       if (currentServiceMode == ServiceMode.proxy) {
@@ -699,7 +721,9 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
       }
 
       if (activeProfile == null) {
-        ref.read(inAppNotificationControllerProvider).showErrorToast('暂无可用节点，请先登录后同步订阅。');
+        ref.read(
+          inAppNotificationControllerProvider,
+        ).showErrorToast(windowsText(locale, 'toast.noNodesLoginSyncAlt'));
         return;
       }
 
@@ -711,6 +735,7 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
   }
 
   Future<void> _connectWithDesktopFallback(WidgetRef ref) async {
+    final locale = ref.read(localePreferencesProvider).flutterLocale;
     final connectionNotifier = ref.read(connectionNotifierProvider.notifier);
     await connectionNotifier.toggleConnection();
 
@@ -730,7 +755,7 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
 
     await ref.read(ConfigOptions.serviceMode.notifier).update(ServiceMode.systemProxy);
     await Future.delayed(const Duration(milliseconds: 250));
-    ref.read(inAppNotificationControllerProvider).showInfoToast('极速模式连接失败，已自动切换到安全模式重试。');
+    ref.read(inAppNotificationControllerProvider).showInfoToast(windowsText(locale, 'toast.fastModeRetry'));
     await connectionNotifier.toggleConnection();
 
     await Future.delayed(const Duration(milliseconds: 1300));
@@ -738,7 +763,7 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
     final retryState = retrySnapshot.valueOrNull;
     final retryFailed = retrySnapshot.hasError || retryState is Disconnected;
     if (retryFailed) {
-      ref.read(inAppNotificationControllerProvider).showErrorToast('连接失败，请切换国家节点或使用自动匹配最快网络。');
+      ref.read(inAppNotificationControllerProvider).showErrorToast(windowsText(locale, 'toast.connectFailed'));
     }
   }
 }
@@ -809,6 +834,7 @@ class _WindowsTitleBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final locale = Localizations.localeOf(context);
     const titleStyle = TextStyle(
       fontSize: 13,
       color: Color(0xFF141A21),
@@ -821,9 +847,10 @@ class _WindowsTitleBar extends StatelessWidget {
       titleWidget = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('LetsVPN (ID: $accountId ', style: titleStyle),
+          const Text('LetsVPN (', style: titleStyle),
+          Text(windowsText(locale, 'common.idLabel', params: {'value': accountId!}), style: titleStyle),
           Tooltip(
-            message: '复制 ID',
+            message: windowsText(locale, 'toast.copyId'),
             child: Material(
               color: Colors.transparent,
               child: InkWell(
@@ -979,14 +1006,15 @@ class _WindowsHomeSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final locale = Localizations.localeOf(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              '首页',
+            Text(
+              windowsText(locale, 'home.title'),
               style: TextStyle(fontSize: 44, fontWeight: FontWeight.w900, color: Color(0xFF121821)),
             ),
             const Spacer(),
@@ -1003,8 +1031,8 @@ class _WindowsHomeSection extends StatelessWidget {
                   children: [
                     const Icon(Icons.campaign_outlined, size: 18, color: Color(0xFFCC5F8F)),
                     const Gap(8),
-                    const Text(
-                      '尊敬的老用户，欢迎回来。',
+                    Text(
+                      windowsText(locale, 'home.welcomeBack'),
                       style: TextStyle(fontSize: 13, color: Color(0xFF3A4250), fontWeight: FontWeight.w500),
                     ),
                     const Gap(12),
@@ -1082,7 +1110,7 @@ class _WindowsHomeSection extends StatelessWidget {
                         ),
                         const Gap(10),
                         Text(
-                          '网络： $selectedCountryName',
+                          windowsText(locale, 'home.network', params: {'value': selectedCountryName}),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 14, color: Color(0xFF5C6878), fontWeight: FontWeight.w400),
@@ -1133,6 +1161,7 @@ class _WindowsRegionSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final locale = Localizations.localeOf(context);
     final showModeSection = serviceMode == ServiceMode.systemProxy;
     final countryIndexByName = <String, int>{for (var i = 0; i < _kCountries.length; i++) _kCountries[i].$2: i};
     List<int> indicesOf(List<String> names) {
@@ -1140,12 +1169,12 @@ class _WindowsRegionSection extends StatelessWidget {
     }
 
     final groups = <(String, List<int>)>[
-      ('亚洲', indicesOf(const ['阿联酋', '香港', '印尼', '印度', '日本', '韩国', '澳门', '马来西亚', '菲律宾', '新加坡', '泰国', '台湾', '越南'])),
-      ('欧洲', indicesOf(const ['瑞士', '德国', '西班牙', '法国', '爱尔兰', '意大利', '荷兰', '挪威', '波兰', '俄罗斯', '瑞典', '土耳其', '英国'])),
-      ('非洲', indicesOf(const ['尼日利亚'])),
-      ('大洋洲', indicesOf(const ['澳大利亚'])),
-      ('北美洲', indicesOf(const ['加拿大', '墨西哥', '美国'])),
-      ('南美洲', indicesOf(const ['阿根廷', '巴西'])),
+      (windowsText(locale, 'region.asia'), indicesOf(const ['阿联酋', '香港', '印尼', '印度', '日本', '韩国', '澳门', '马来西亚', '菲律宾', '新加坡', '泰国', '台湾', '越南'])),
+      (windowsText(locale, 'region.europe'), indicesOf(const ['瑞士', '德国', '西班牙', '法国', '爱尔兰', '意大利', '荷兰', '挪威', '波兰', '俄罗斯', '瑞典', '土耳其', '英国'])),
+      (windowsText(locale, 'region.africa'), indicesOf(const ['尼日利亚'])),
+      (windowsText(locale, 'region.oceania'), indicesOf(const ['澳大利亚'])),
+      (windowsText(locale, 'region.northAmerica'), indicesOf(const ['加拿大', '墨西哥', '美国'])),
+      (windowsText(locale, 'region.southAmerica'), indicesOf(const ['阿根廷', '巴西'])),
     ];
 
     Widget buildModeOption({
@@ -1216,7 +1245,7 @@ class _WindowsRegionSection extends StatelessWidget {
                     ),
                     Expanded(
                       child: Text(
-                        '${_kCountries[countryIndex].$1} ${_kCountries[countryIndex].$2}',
+                        '${_kCountries[countryIndex].$1} ${windowsCountryName(locale, _kCountries[countryIndex].$2)}',
                         style: const TextStyle(fontSize: 13, color: Color(0xFF1C2025)),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1232,8 +1261,8 @@ class _WindowsRegionSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          '变更国家和地区',
+        Text(
+          windowsText(locale, 'region.title'),
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Color(0xFF1A2332)),
         ),
         const Gap(16),
@@ -1253,26 +1282,26 @@ class _WindowsRegionSection extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (showModeSection) ...[
-                      const Text(
-                        '选择模式',
+                      Text(
+                        windowsText(locale, 'region.selectMode'),
                         style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF1A2332)),
                       ),
                       const Gap(8),
                       buildModeOption(
-                        title: '极速模式',
-                        subtitle: '智能分流，仅代理需要翻墙的网络流量，不影响本地资源访问。',
+                        title: windowsText(locale, 'region.fastMode'),
+                        subtitle: windowsText(locale, 'region.fastModeDesc'),
                         value: ServiceMode.tun,
                         emphasizeBorder: true,
                       ),
                       buildModeOption(
-                        title: '安全模式',
-                        subtitle: '代理全部网络流量，改变 IP 地址，安全性极强。',
+                        title: windowsText(locale, 'region.safeMode'),
+                        subtitle: windowsText(locale, 'region.safeModeDesc'),
                         value: ServiceMode.systemProxy,
                       ),
                       const Divider(height: 28),
                     ],
-                    const Text(
-                      '选择网络',
+                    Text(
+                      windowsText(locale, 'region.selectNetwork'),
                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF1A2332)),
                     ),
                     const Gap(6),
@@ -1299,7 +1328,7 @@ class _WindowsRegionSection extends StatelessWidget {
                               child: const Icon(Icons.place_rounded, size: 14, color: Colors.white),
                             ),
                             const Gap(8),
-                            const Text('自动匹配最快网络', style: TextStyle(fontSize: 20 / 1.2)),
+                            Text(windowsText(locale, 'region.autoFastest'), style: const TextStyle(fontSize: 20 / 1.2)),
                           ],
                         ),
                       ),
@@ -1334,11 +1363,12 @@ class _WindowsReferralSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final locale = Localizations.localeOf(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          '推荐有奖',
+        Text(
+          windowsText(locale, 'referral.detailTitle'),
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Color(0xFF1A2332)),
         ),
         const Gap(18),
@@ -1348,20 +1378,8 @@ class _WindowsReferralSection extends StatelessWidget {
             Expanded(
               child: Text.rich(
                 TextSpan(
+                  text: windowsText(locale, 'referral.detailText', params: {'id': userId}),
                   style: const TextStyle(fontSize: 13.5, color: Color(0xFF1D2024), height: 1.8),
-                  children: [
-                    const TextSpan(text: '好友安装快连后，填写您的ID（'),
-                    TextSpan(
-                      text: userId,
-                      style: const TextStyle(color: Color(0xFF2457A6), fontWeight: FontWeight.w700),
-                    ),
-                    const TextSpan(text: '）即算推荐成功；\n当其每次获得会员，您均可赚取 '),
-                    const TextSpan(
-                      text: '20%',
-                      style: TextStyle(fontSize: 20, color: Color(0xFF2457A6), fontWeight: FontWeight.w700),
-                    ),
-                    const TextSpan(text: ' 的时长！永久有效！'),
-                  ],
                 ),
               ),
             ),
@@ -1372,7 +1390,7 @@ class _WindowsReferralSection extends StatelessWidget {
                 border: Border.all(color: const Color(0xFFCC5F8F), width: 1),
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: const Text('详细规则>>', style: TextStyle(fontSize: 12, color: Color(0xFFCC5F8F))),
+              child: Text(windowsText(locale, 'referral.rules'), style: const TextStyle(fontSize: 12, color: Color(0xFFCC5F8F))),
             ),
           ],
         ),
@@ -1386,8 +1404,8 @@ class _WindowsReferralSection extends StatelessWidget {
               backgroundColor: const Color(0xFFCC5F8F),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            child: const Text(
-              '推荐给好友',
+            child: Text(
+              windowsText(locale, 'referral.share'),
               style: TextStyle(fontSize: 20 / 1.4, fontWeight: FontWeight.w700),
             ),
           ),
@@ -1399,17 +1417,23 @@ class _WindowsReferralSection extends StatelessWidget {
               SizedBox(
                 width: 222,
                 child: Column(
-                  children: const [
-                    _WindowsMetricCard(title: '成功推荐', value: '0人'),
+                  children: [
+                    _WindowsMetricCard(
+                      title: windowsText(locale, 'referral.successCount'),
+                      value: locale.toString() == 'en' ? '0' : '0${windowsText(locale, 'common.peopleUnit')}',
+                    ),
                     Gap(12),
-                    _WindowsMetricCard(title: '累计获得', value: '0小时'),
+                    _WindowsMetricCard(
+                      title: windowsText(locale, 'referral.totalEarned'),
+                      value: locale.toString() == 'en' ? '0' : '0${windowsText(locale, 'common.hoursUnit')}',
+                    ),
                     Gap(12),
-                    _WindowsMetricCard(title: '累计白嫖', value: '0\$'),
+                    _WindowsMetricCard(title: windowsText(locale, 'referral.totalSaved'), value: '0\$'),
                   ],
                 ),
               ),
               const Gap(12),
-              const Expanded(
+              Expanded(
                 child: DecoratedBox(
                   decoration: BoxDecoration(color: Color(0xFFF0F4F8), borderRadius: BorderRadius.zero),
                   child: Center(
@@ -1419,7 +1443,7 @@ class _WindowsReferralSection extends StatelessWidget {
                         Icon(Icons.description_outlined, color: Color(0xFFB6BBC3), size: 64),
                         Gap(14),
                         Text(
-                          '暂无还未获得推荐奖励，快去推荐好友吧！',
+                          windowsText(locale, 'referral.empty'),
                           style: TextStyle(fontSize: 18 / 1.6, color: Color(0xFF93979F)),
                         ),
                       ],
@@ -1475,11 +1499,12 @@ class _WindowsFreeMembershipSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final locale = Localizations.localeOf(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          '免费领会员',
+        Text(
+          windowsText(locale, 'free.title'),
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Color(0xFF1A2332)),
         ),
         const Gap(10),
@@ -1491,12 +1516,12 @@ class _WindowsFreeMembershipSection extends StatelessWidget {
                 children: [
                   const _WindowsFreeTicketArtwork(),
                   const Gap(16),
-                  const Text(
-                    '免费领会员',
+                  Text(
+                    windowsText(locale, 'free.title'),
                     style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: Color(0xFF1A2332)),
                   ),
                   const Gap(8),
-                  const Text('每天都来点一点，免费会员随便领！', style: TextStyle(fontSize: 13.5, color: Color(0xFF5C6878))),
+                  Text(windowsText(locale, 'free.subtitle'), style: const TextStyle(fontSize: 13.5, color: Color(0xFF5C6878))),
                   const Gap(16),
                   SizedBox(
                     width: 236,
@@ -1507,21 +1532,27 @@ class _WindowsFreeMembershipSection extends StatelessWidget {
                         backgroundColor: const Color(0xFFCC5F8F),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
-                      child: const Text(
-                        '试试运气',
+                      child: Text(
+                        windowsText(locale, 'free.button'),
                         style: TextStyle(fontSize: 22 / 1.4, fontWeight: FontWeight.w700),
                       ),
                     ),
                   ),
                   const Gap(24),
                   Row(
-                    children: const [
+                    children: [
                       Expanded(
-                        child: _WindowsStatPanel(title: '今日领取人数', value: '38094人'),
+                        child: _WindowsStatPanel(
+                          title: windowsText(locale, 'free.todayCount'),
+                          value: locale.toString() == 'en' ? '38094' : '38094${windowsText(locale, 'common.peopleUnit')}',
+                        ),
                       ),
                       Gap(22),
                       Expanded(
-                        child: _WindowsStatPanel(title: '累计领取会员', value: '32554小时'),
+                        child: _WindowsStatPanel(
+                          title: windowsText(locale, 'free.totalHours'),
+                          value: locale.toString() == 'en' ? '32554' : '32554${windowsText(locale, 'common.hoursUnit')}',
+                        ),
                       ),
                     ],
                   ),
@@ -1616,10 +1647,10 @@ class _WindowsFreeTicketArtwork extends StatelessWidget {
                 ),
                 boxShadow: const [BoxShadow(color: Color(0x400F4AA8), blurRadius: 12, offset: Offset(0, 4))],
               ),
-              child: const Center(
+              child: Center(
                 child: Text(
-                  'FREE',
-                  style: TextStyle(color: Colors.white, fontSize: 52 / 1.5, fontWeight: FontWeight.w500),
+                  windowsText(Localizations.localeOf(context), 'free.badge'),
+                  style: const TextStyle(color: Colors.white, fontSize: 52 / 1.5, fontWeight: FontWeight.w500),
                 ),
               ),
             ),
@@ -1639,15 +1670,16 @@ class _WindowsMessagesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const messages = [
-      ('搞定 Gemini 报错，看这篇就够了', 'Gemini 频繁报错、提示地区不支持？快连已完成专项优化，教你三招彻底告别这些抓狂时刻。'),
-      ('保护您的快连 VPN 服务不被盗取', '请您认准官方渠道充值，并且妥善保管好您的订单号，这是快连 VPN 售后的唯一保障，千万不要将订单号泄露给其他人。'),
+    final locale = Localizations.localeOf(context);
+    final messages = [
+      (windowsText(locale, 'messages.geminiTitle'), windowsText(locale, 'messages.geminiBody')),
+      (windowsText(locale, 'messages.securityTitle'), windowsText(locale, 'messages.securityBody')),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          '消息中心',
+        Text(
+          windowsText(locale, 'messages.title'),
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Color(0xFF1A2332)),
         ),
         const Gap(18),
@@ -1788,7 +1820,7 @@ class _WindowsSettingsSection extends HookConsumerWidget {
                     child: Padding(
                       padding: const EdgeInsets.only(left: 2, top: 8),
                       child: Text(
-                        locale.languageCode == 'zh' ? '建议开启开机自动启动。' : 'Recommended to enable auto start at login.',
+                        windowsText(locale.flutterLocale, 'settings.autoStartHint'),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 20 / 1.4, color: Color(0xFF1F2328)),
@@ -1863,7 +1895,7 @@ class _WindowsSettingsSection extends HookConsumerWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      locale.languageCode == 'zh' ? '当前版本： $currentVersion' : 'Current version: $currentVersion',
+                      windowsText(locale.flutterLocale, 'settings.currentVersion', params: {'value': currentVersion}),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 18, color: Color(0xFF1F2328)),
@@ -1904,7 +1936,7 @@ class _WindowsSettingsSection extends HookConsumerWidget {
               ),
               const Gap(8),
               Text(
-                locale.languageCode == 'zh' ? '版权所有 © LetsVPN 团队' : 'Copyright © LetsVPN Team',
+                windowsText(locale.flutterLocale, 'settings.copyright'),
                 style: const TextStyle(fontSize: 18, color: Color(0xFF1F2328)),
               ),
               const Gap(20),
@@ -2099,7 +2131,7 @@ class _CountDownHeader extends StatelessWidget {
         ),
         const Gap(8),
         Text(
-          '到期时间: $expireAtText',
+          windowsText(Localizations.localeOf(context), 'home.expireAt', params: {'value': expireAtText}),
           style: const TextStyle(fontSize: 20 / 1.6, fontWeight: FontWeight.w500, color: Color(0xFF2A2A2A)),
         ),
       ],
@@ -2294,6 +2326,7 @@ class _ConnectionStatusBadgeState extends State<_ConnectionStatusBadge> with Tic
 }
 
 void _showUploadLogsDialog(BuildContext context) {
+  final locale = Localizations.localeOf(context);
   showDialog<void>(
     context: context,
     builder: (ctx) => Dialog(
@@ -2319,13 +2352,13 @@ void _showUploadLogsDialog(BuildContext context) {
                 child: const Icon(Icons.upload_file_rounded, color: Colors.white, size: 32),
               ),
               const Gap(14),
-              const Text(
-                '上传日志',
+              Text(
+                windowsText(locale, 'uploadLogs.title'),
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
               ),
               const Gap(8),
-              const Text(
-                '请先和客服沟通后再上传日志，日志用于分析您在 APP 使用中遇到的问题。',
+              Text(
+                windowsText(locale, 'uploadLogs.body'),
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 13, color: Color(0xFF666666), height: 1.5),
               ),
@@ -2340,7 +2373,7 @@ void _showUploadLogsDialog(BuildContext context) {
                         side: const BorderSide(color: Color(0xFFDDDDDD)),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
-                      child: const Text('取消'),
+                      child: Text(windowsText(locale, 'common.cancel')),
                     ),
                   ),
                   const Gap(10),
@@ -2351,7 +2384,7 @@ void _showUploadLogsDialog(BuildContext context) {
                         backgroundColor: const Color(0xFFCC5F8F),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
-                      child: const Text('上传日志'),
+                      child: Text(windowsText(locale, 'common.upload')),
                     ),
                   ),
                 ],
@@ -2370,10 +2403,11 @@ Future<void> showCountrySelectionDialog(BuildContext context) async {
   }
 
   if (PlatformUtils.isDesktop) {
+    final locale = Localizations.localeOf(context);
     final window = await DesktopMultiWindow.createWindow(jsonEncode({'type': 'country-selection'}));
     await window.setFrame(Offset.zero & const Size(300, 500));
     await window.center();
-    await window.setTitle('选择国家');
+    await window.setTitle(windowsText(locale, 'window.countryTitle'));
     if (PlatformUtils.isMacOS) {
       await window.resizable(false);
     }
@@ -2394,10 +2428,11 @@ Future<void> showLoginDialog(BuildContext context) async {
   }
 
   if (PlatformUtils.isDesktop) {
+    final locale = Localizations.localeOf(context);
     final window = await DesktopMultiWindow.createWindow(jsonEncode({'type': 'login-account'}));
     await window.setFrame(Offset.zero & const Size(700, 600));
     await window.center();
-    await window.setTitle('登录账户');
+    await window.setTitle(windowsText(locale, 'window.loginTitle'));
     if (PlatformUtils.isMacOS) {
       await window.resizable(false);
     }
@@ -2426,9 +2461,10 @@ class _MenuHandleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final locale = Localizations.localeOf(context);
     return Semantics(
       button: true,
-      label: expanded ? '收起侧边栏' : '展开侧边栏',
+      label: expanded ? windowsText(locale, 'window.collapseSidebar') : windowsText(locale, 'window.expandSidebar'),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
@@ -2503,9 +2539,13 @@ class _RightDrawerPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final locale = Localizations.localeOf(context);
     final accountName = authState.account?.trim();
     final hasAccountName = accountName != null && accountName.isNotEmpty;
-    final accountDisplayName = authState.isLoggedIn ? (hasAccountName ? accountName : '已登录账户') : '未登录账户';
+    final accountId = authState.uuid?.trim().isNotEmpty == true ? authState.uuid!.trim() : '441337052';
+    final accountDisplayName = authState.isLoggedIn
+        ? (hasAccountName ? accountName : windowsText(locale, 'home.loggedInAccount'))
+        : windowsText(locale, 'home.guestAccount');
 
     return Container(
       decoration: const BoxDecoration(
@@ -2564,7 +2604,9 @@ class _RightDrawerPanel extends StatelessWidget {
                                         ),
                                         const Gap(4),
                                         Text(
-                                          authState.isLoggedIn ? '已登录' : '已过期',
+                                          authState.isLoggedIn
+                                              ? windowsText(locale, 'drawer.loggedIn')
+                                              : windowsText(locale, 'drawer.expired'),
                                           style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700).copyWith(
                                             color: authState.isLoggedIn ? Colors.white : const Color(0xFF9EA4AA),
                                           ),
@@ -2584,7 +2626,7 @@ class _RightDrawerPanel extends StatelessWidget {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Text(
-                                      accountDisplayName ?? '未登录账户',
+                                      accountDisplayName,
                                       style: const TextStyle(
                                         fontSize: 26 / 1.6,
                                         color: Colors.black87,
@@ -2598,30 +2640,40 @@ class _RightDrawerPanel extends StatelessWidget {
                               ),
                             ),
                             const Gap(8),
-                            const Row(
+                            Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text('ID: 333275276', style: TextStyle(fontSize: 13, color: Colors.black87)),
-                                Gap(4),
-                                Icon(Icons.copy_rounded, size: 14, color: Colors.black87),
+                                Text(
+                                  windowsText(locale, 'common.idLabel', params: {'value': accountId}),
+                                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+                                ),
+                                const Gap(4),
+                                GestureDetector(
+                                  onTap: () => Clipboard.setData(ClipboardData(text: accountId)),
+                                  child: const Icon(Icons.copy_rounded, size: 14, color: Colors.black87),
+                                ),
                               ],
                             ),
                           ],
                         ),
                       ),
                       const Gap(16),
-                      _RightMenuItem(icon: Icons.public_rounded, title: '变更国家和地区', onTap: onChangeRegion),
-                      _RightMenuItem(icon: Icons.card_giftcard_rounded, title: '推荐有奖', onTap: onRecommend),
-                      _RightMenuItem(icon: Icons.card_membership_rounded, title: '免费领会员', onTap: onClaimMembership),
+                      _RightMenuItem(icon: Icons.public_rounded, title: windowsText(locale, 'region.title'), onTap: onChangeRegion),
+                      _RightMenuItem(icon: Icons.card_giftcard_rounded, title: windowsText(locale, 'home.referral'), onTap: onRecommend),
+                      _RightMenuItem(
+                        icon: Icons.card_membership_rounded,
+                        title: windowsText(locale, 'home.freeMembership'),
+                        onTap: onClaimMembership,
+                      ),
                       _RightMenuItem(
                         icon: Icons.notifications_none_rounded,
-                        title: '消息中心',
+                        title: windowsText(locale, 'home.messages'),
                         badgeText: '2',
                         onTap: onMessages,
                       ),
-                      _RightMenuItem(icon: Icons.link_rounded, title: '手机端下载', onTap: onMobileDownload),
-                      _RightMenuItem(icon: Icons.support_agent_rounded, title: '在线客服', onTap: onSupport),
-                      _RightMenuItem(icon: Icons.upload_file_rounded, title: '上传日志', onTap: onUploadLogs),
+                      _RightMenuItem(icon: Icons.link_rounded, title: windowsText(locale, 'home.mobileDownload'), onTap: onMobileDownload),
+                      _RightMenuItem(icon: Icons.support_agent_rounded, title: windowsText(locale, 'home.support'), onTap: onSupport),
+                      _RightMenuItem(icon: Icons.upload_file_rounded, title: windowsText(locale, 'home.uploadLogs'), onTap: onUploadLogs),
                       const Spacer(),
                       SizedBox(
                         width: double.infinity,
@@ -2636,7 +2688,10 @@ class _RightDrawerPanel extends StatelessWidget {
                               side: const BorderSide(color: Color(0xFFCC5F8F), width: 1.2),
                             ),
                           ),
-                          child: const Text('续费会员', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                          child: Text(
+                            windowsText(locale, 'home.renew'),
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                          ),
                         ),
                       ),
                       if (authState.isLoggedIn) ...[
@@ -2654,7 +2709,10 @@ class _RightDrawerPanel extends StatelessWidget {
                                 side: const BorderSide(color: Color(0xFFD7D7D7), width: 1),
                               ),
                             ),
-                            child: const Text('退出账号', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                            child: Text(
+                              windowsText(locale, 'home.logout'),
+                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                            ),
                           ),
                         ),
                       ],
@@ -2669,11 +2727,17 @@ class _RightDrawerPanel extends StatelessWidget {
                             foregroundColor: const Color(0xFF212121),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
                           ),
-                          child: const Text('退出程序', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                          child: Text(
+                            windowsText(locale, 'home.exitApp'),
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                          ),
                         ),
                       ),
                       const Gap(10),
-                      Text('版本：$appInfoVersion', style: const TextStyle(fontSize: 12, color: Color(0xFF303030))),
+                      Text(
+                        windowsText(locale, 'home.version', params: {'value': appInfoVersion}),
+                        style: const TextStyle(fontSize: 12, color: Color(0xFF303030)),
+                      ),
                     ],
                   ),
                 ),
@@ -2774,6 +2838,7 @@ const _kCountries = [
 ];
 
 Future<void> _applyCountrySelection(WidgetRef ref, int index) async {
+  final locale = ref.read(localePreferencesProvider).flutterLocale;
   await ref.read(Preferences.selectedCountryIndex.notifier).update(index);
 
   final profileRepository = await ref.read(profileRepositoryProvider.future);
@@ -2782,7 +2847,7 @@ Future<void> _applyCountrySelection(WidgetRef ref, int index) async {
       .first;
   final profiles = profilesEither.getOrElse((_) => <ProfileEntity>[]);
   if (profiles.isEmpty) {
-    ref.read(inAppNotificationControllerProvider).showErrorToast('暂无可用节点，请先登录并同步订阅。');
+    ref.read(inAppNotificationControllerProvider).showErrorToast(windowsText(locale, 'toast.noNodesLoginSync'));
     return;
   }
 
@@ -2803,7 +2868,9 @@ Future<void> _applyCountrySelection(WidgetRef ref, int index) async {
 
   await profileRepository.setAsActive(targetProfile.id).run();
   ref.invalidate(activeProfileProvider);
-  ref.read(inAppNotificationControllerProvider).showSuccessToast('已切换节点：${targetProfile.name}');
+  ref.read(
+    inAppNotificationControllerProvider,
+  ).showSuccessToast(windowsText(locale, 'toast.countrySwitched', params: {'value': targetProfile.name}));
 }
 
 class _CountrySelectionDialog extends ConsumerStatefulWidget {
@@ -2917,6 +2984,7 @@ class _CountrySelectionContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final locale = Localizations.localeOf(context);
     return SizedBox(
       width: 300,
       height: 500,
@@ -2979,7 +3047,7 @@ class _CountrySelectionContent extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      '安全模式',
+                      windowsText(locale, 'region.safeMode'),
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
@@ -3016,7 +3084,7 @@ class _CountrySelectionContent extends StatelessWidget {
                     ),
                     const Gap(10),
                     Text(
-                      '极速模式',
+                      windowsText(locale, 'region.fastMode'),
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
@@ -3056,7 +3124,7 @@ class _CountrySelectionContent extends StatelessWidget {
                               const Gap(14),
                               Expanded(
                                 child: Text(
-                                  name,
+                                  windowsCountryName(locale, name),
                                   style: const TextStyle(
                                     fontSize: 15,
                                     color: Color(0xFF1B1B1B),
@@ -3203,10 +3271,14 @@ class _LoginDialogState extends ConsumerState<LoginAccountView> {
 
   /// 左侧面板：用户头像、设备ID、会员信息
   Widget _buildLeftPanel(AuthState authState) {
+    final locale = Localizations.localeOf(context);
     const leftWidth = 180.0;
-    final membershipLevelText = authState.isLoggedIn ? '免费会员' : '未登录';
+    final accountId = authState.uuid?.trim().isNotEmpty == true ? authState.uuid!.trim() : '441337052';
+    final membershipLevelText = authState.isLoggedIn
+        ? windowsText(locale, 'login.freeMembership')
+        : windowsText(locale, 'login.notLoggedIn');
     final membershipLevelColor = authState.isLoggedIn ? const Color(0xFF28C840) : const Color(0xFFCC5F8F);
-    final remainingTimeText = authState.isLoggedIn ? '不限时' : '--';
+    final remainingTimeText = authState.isLoggedIn ? windowsText(locale, 'home.unlimited') : '--';
 
     return SizedBox(
       width: leftWidth,
@@ -3251,7 +3323,7 @@ class _LoginDialogState extends ConsumerState<LoginAccountView> {
                             ),
                             const Gap(2),
                             Text(
-                              authState.isLoggedIn ? '已登录' : '已过期',
+                              authState.isLoggedIn ? windowsText(locale, 'home.active') : windowsText(locale, 'home.expired'),
                               style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
                             ),
                           ],
@@ -3263,23 +3335,26 @@ class _LoginDialogState extends ConsumerState<LoginAccountView> {
               ),
               const Gap(16),
               Text(
-                authState.isLoggedIn ? (authState.account ?? '本机设备') : '本机设备',
+                authState.isLoggedIn ? (authState.account ?? windowsText(locale, 'login.localDevice')) : windowsText(locale, 'login.localDevice'),
                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
               ),
               const Gap(6),
               GestureDetector(
                 onTap: () {
-                  Clipboard.setData(const ClipboardData(text: '333275276'));
+                  Clipboard.setData(ClipboardData(text: accountId));
                   ScaffoldMessenger.of(
                     context,
-                  ).showSnackBar(const SnackBar(content: Text('ID 已复制'), duration: Duration(seconds: 1)));
+                  ).showSnackBar(SnackBar(content: Text(windowsText(locale, 'login.idCopied')), duration: const Duration(seconds: 1)));
                 },
                 child: MouseRegion(
                   cursor: SystemMouseCursors.click,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text('ID: 333275276', style: TextStyle(fontSize: 12, color: Color(0xFF666666))),
+                      Text(
+                        windowsText(locale, 'common.idLabel', params: {'value': accountId}),
+                        style: const TextStyle(fontSize: 12, color: Color(0xFF666666)),
+                      ),
                       const Gap(4),
                       Icon(Icons.copy_rounded, size: 13, color: Colors.grey.shade500),
                     ],
@@ -3304,7 +3379,7 @@ class _LoginDialogState extends ConsumerState<LoginAccountView> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('会员等级', style: TextStyle(fontSize: 11, color: Color(0xFF999999))),
+                          Text(windowsText(locale, 'login.memberLevel'), style: const TextStyle(fontSize: 11, color: Color(0xFF999999))),
                           const Gap(2),
                           Text(
                             membershipLevelText,
@@ -3335,7 +3410,7 @@ class _LoginDialogState extends ConsumerState<LoginAccountView> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('剩余时间', style: TextStyle(fontSize: 11, color: Color(0xFF999999))),
+                          Text(windowsText(locale, 'login.remainingTime'), style: const TextStyle(fontSize: 11, color: Color(0xFF999999))),
                           const Gap(2),
                           Text(
                             remainingTimeText,
@@ -3358,11 +3433,16 @@ class _LoginDialogState extends ConsumerState<LoginAccountView> {
 
   /// 右侧欢迎面板（未登录首页）
   Widget _buildWelcomePanel(AuthState authState) {
+    final locale = Localizations.localeOf(context);
     final isLoggedIn = authState.isLoggedIn;
     final accountName = authState.account?.trim();
     final hasAccountName = accountName != null && accountName.isNotEmpty;
-    final String welcomeTitle = isLoggedIn ? (hasAccountName ? accountName! : '已登录账户') : '未登录账户';
-    final String welcomeDescription = isLoggedIn ? '当前账号已登录，您可以关闭窗口返回主界面。' : '您可以登录或注册一个账户，在不同设备间共享会员时长。';
+    final String welcomeTitle = isLoggedIn
+        ? (hasAccountName ? accountName! : windowsText(locale, 'home.loggedInAccount'))
+        : windowsText(locale, 'home.guestAccount');
+    final String welcomeDescription = isLoggedIn
+        ? windowsText(locale, 'login.loggedInDesc')
+        : windowsText(locale, 'login.guestDesc');
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 32),
@@ -3493,8 +3573,8 @@ class _LoginDialogState extends ConsumerState<LoginAccountView> {
                   backgroundColor: const Color(0xFFCC5F8F),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
                 ),
-                child: const Text(
-                  '完成',
+                child: Text(
+                  windowsText(locale, 'login.done'),
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
                 ),
               ),
@@ -3520,8 +3600,8 @@ class _LoginDialogState extends ConsumerState<LoginAccountView> {
                         side: const BorderSide(color: Color(0xFFCC5F8F), width: 1.2),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
                       ),
-                      child: const Text(
-                        '注册',
+                      child: Text(
+                        windowsText(locale, 'login.titleRegister'),
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFFCC5F8F)),
                       ),
                     ),
@@ -3544,8 +3624,8 @@ class _LoginDialogState extends ConsumerState<LoginAccountView> {
                         backgroundColor: const Color(0xFFCC5F8F),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
                       ),
-                      child: const Text(
-                        '登录',
+                      child: Text(
+                        windowsText(locale, 'login.titleLogin'),
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
                       ),
                     ),
@@ -3562,7 +3642,7 @@ class _LoginDialogState extends ConsumerState<LoginAccountView> {
                 icon: authState.isLoading
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.open_in_new_rounded, size: 18),
-                label: const Text('浏览器授权登录'),
+                label: Text(windowsText(locale, 'login.browserAuth')),
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: Color(0xFFCC5F8F), width: 1),
                   foregroundColor: const Color(0xFFCC5F8F),
@@ -3587,9 +3667,10 @@ class _LoginDialogState extends ConsumerState<LoginAccountView> {
 
   /// 右侧登录/注册表单面板
   Widget _buildAuthFormPanel(AuthState authState) {
+    final locale = Localizations.localeOf(context);
     final isLogin = _page == _LoginPage.login;
-    final title = isLogin ? '登录账户' : '注册账户';
-    final submitText = isLogin ? '登录' : '注册';
+    final title = isLogin ? windowsText(locale, 'login.titleLogin') : windowsText(locale, 'login.titleRegister');
+    final submitText = isLogin ? windowsText(locale, 'login.titleLogin') : windowsText(locale, 'login.titleRegister');
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 32),
@@ -3624,10 +3705,10 @@ class _LoginDialogState extends ConsumerState<LoginAccountView> {
             // 账号输入框
             TextFormField(
               controller: _accountController,
-              validator: AuthApiService.validateAccount,
+              validator: (value) => AuthApiService.validateAccount(value, locale: locale),
               decoration: InputDecoration(
-                labelText: '账号',
-                hintText: '6-20位字母或数字',
+                labelText: windowsText(locale, 'login.account'),
+                hintText: windowsText(locale, 'login.accountHint'),
                 prefixIcon: const Icon(Icons.person_outline_rounded, color: Color(0xFFCC5F8F)),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 focusedBorder: OutlineInputBorder(
@@ -3642,11 +3723,11 @@ class _LoginDialogState extends ConsumerState<LoginAccountView> {
             // 密码输入框
             TextFormField(
               controller: _passwordController,
-              validator: AuthApiService.validatePassword,
+              validator: (value) => AuthApiService.validatePassword(value, locale: locale),
               obscureText: _obscurePassword,
               decoration: InputDecoration(
-                labelText: '密码',
-                hintText: '6-20位字母或数字',
+                labelText: windowsText(locale, 'login.password'),
+                hintText: windowsText(locale, 'login.passwordHint'),
                 prefixIcon: const Icon(Icons.lock_outline_rounded, color: Color(0xFFCC5F8F)),
                 suffixIcon: IconButton(
                   icon: Icon(
@@ -3718,11 +3799,11 @@ class _LoginDialogState extends ConsumerState<LoginAccountView> {
                   cursor: SystemMouseCursors.click,
                   child: Text.rich(
                     TextSpan(
-                      text: isLogin ? '没有账号？' : '已有账号？',
+                      text: isLogin ? windowsText(locale, 'login.noAccount') : windowsText(locale, 'login.hasAccount'),
                       style: const TextStyle(fontSize: 13, color: Color(0xFF888888)),
                       children: [
                         TextSpan(
-                          text: isLogin ? '立即注册' : '立即登录',
+                          text: isLogin ? windowsText(locale, 'login.registerNow') : windowsText(locale, 'login.loginNow'),
                           style: const TextStyle(color: Color(0xFFCC5F8F), fontWeight: FontWeight.w600),
                         ),
                       ],
@@ -3736,7 +3817,7 @@ class _LoginDialogState extends ConsumerState<LoginAccountView> {
               child: TextButton.icon(
                 onPressed: authState.isLoading ? null : _submitBrowserAuth,
                 icon: const Icon(Icons.open_in_new_rounded, size: 16),
-                label: const Text('改用浏览器授权登录'),
+                label: Text(windowsText(locale, 'login.switchBrowserAuth')),
                 style: TextButton.styleFrom(foregroundColor: const Color(0xFFCC5F8F)),
               ),
             ),

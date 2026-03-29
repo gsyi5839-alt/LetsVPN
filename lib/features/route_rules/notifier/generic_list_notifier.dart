@@ -1,4 +1,7 @@
+import 'package:hiddify/core/localization/locale_preferences.dart';
+import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/core/notification/in_app_notification_controller.dart';
+import 'package:hiddify/features/home/widget/windows_localized_strings.dart';
 import 'package:hiddify/features/route_rules/notifier/rule_notifier.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -45,7 +48,8 @@ class GenericListNotifier extends _$GenericListNotifier {
   bool _isValid(dynamic value) {
     if (value == null) return false;
     if (state.contains(value)) {
-      ref.read(inAppNotificationControllerProvider).showErrorToast('Value is exist');
+      final locale = ref.read(localePreferencesProvider).flutterLocale;
+      ref.read(inAppNotificationControllerProvider).showErrorToast(windowsText(locale, 'routeRules.valueExists'));
       return false;
     }
     return true;

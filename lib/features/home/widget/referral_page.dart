@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hiddify/features/home/widget/windows_localized_strings.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -15,6 +16,7 @@ class ReferralPage extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final locale = Localizations.localeOf(context);
     useEffect(() {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         await windowManager.setSize(_windowSize);
@@ -40,19 +42,19 @@ class ReferralPage extends HookConsumerWidget {
                   // 左栏：推荐说明
                   SizedBox(
                     width: 340,
-                    child: _ReferralLeftPanel(userId: _userId),
+                    child: _ReferralLeftPanel(userId: _userId, locale: locale),
                   ),
                   // 分割线
                   const VerticalDivider(width: 1, color: Color(0xFFEEEEEE)),
                   // 右栏：奖励列表
-                  const Expanded(child: _ReferralRightPanel()),
+                  Expanded(child: _ReferralRightPanel(locale: locale)),
                 ],
               ),
               // 顶部右侧"详细规则"链接
-              const Positioned(
+              Positioned(
                 top: 12,
                 right: 16,
-                child: _RulesButton(),
+                child: _RulesButton(locale: locale),
               ),
               // 返回按钮
               Positioned(
@@ -61,7 +63,7 @@ class ReferralPage extends HookConsumerWidget {
                 child: IconButton(
                   icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: Color(0xFF888888)),
                   onPressed: () => context.goNamed('home'),
-                  tooltip: '返回',
+                  tooltip: windowsText(locale, 'common.back'),
                 ),
               ),
             ],
@@ -73,9 +75,10 @@ class ReferralPage extends HookConsumerWidget {
 }
 
 class _ReferralLeftPanel extends StatelessWidget {
-  const _ReferralLeftPanel({required this.userId});
+  const _ReferralLeftPanel({required this.userId, required this.locale});
 
   final String userId;
+  final Locale locale;
 
   @override
   Widget build(BuildContext context) {
@@ -95,8 +98,8 @@ class _ReferralLeftPanel extends StatelessWidget {
           ),
           const Gap(18),
           // 标题
-          const Text(
-            '推荐朋友，领永久会员',
+          Text(
+            windowsText(locale, 'referral.title'),
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF1A1A1A)),
             textAlign: TextAlign.center,
           ),
@@ -107,17 +110,7 @@ class _ReferralLeftPanel extends StatelessWidget {
             text: TextSpan(
               style: const TextStyle(fontSize: 13, color: Color(0xFF555555), height: 1.6),
               children: [
-                const TextSpan(text: '好友安装快连后，填写您的 ID（'),
-                TextSpan(
-                  text: userId,
-                  style: const TextStyle(color: Color(0xFFCC5F8F), fontWeight: FontWeight.w700),
-                ),
-                const TextSpan(text: '）即算推荐成功，当其每次获得会员，您均可获取 '),
-                const TextSpan(
-                  text: '20%',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFFCC5F8F)),
-                ),
-                const TextSpan(text: ' 的时长！永久有效！'),
+                TextSpan(text: windowsText(locale, 'referral.detailText', params: {'id': userId})),
               ],
             ),
           ),
@@ -130,24 +123,32 @@ class _ReferralLeftPanel extends StatelessWidget {
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: userId));
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('推荐码已复制'), duration: Duration(seconds: 2)),
+                  SnackBar(content: Text(windowsText(locale, 'referral.copied')), duration: const Duration(seconds: 2)),
                 );
               },
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFFCC5F8F),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
-              child: const Text('推荐给好友', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              child: Text(windowsText(locale, 'referral.share'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
             ),
           ),
           const Spacer(),
           // 底部统计
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: const [
-              _StatItem(label: '成功推荐', value: '0', unit: '人'),
+            children: [
+              _StatItem(
+                label: windowsText(locale, 'referral.successCount'),
+                value: '0',
+                unit: locale.toString() == 'en' ? '' : windowsText(locale, 'common.peopleUnit'),
+              ),
               _StatDivider(),
-              _StatItem(label: '累计获得', value: '0', unit: '小时'),
+              _StatItem(
+                label: windowsText(locale, 'referral.totalEarned'),
+                value: '0',
+                unit: locale.toString() == 'en' ? '' : windowsText(locale, 'common.hoursUnit'),
+              ),
             ],
           ),
         ],
@@ -198,7 +199,9 @@ class _StatDivider extends StatelessWidget {
 }
 
 class _ReferralRightPanel extends StatelessWidget {
-  const _ReferralRightPanel();
+  const _ReferralRightPanel({required this.locale});
+
+  final Locale locale;
 
   @override
   Widget build(BuildContext context) {
@@ -207,8 +210,8 @@ class _ReferralRightPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '我的奖励（只显示最近 10 条）',
+          Text(
+            windowsText(locale, 'referral.myRewards'),
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF333333)),
           ),
           const Gap(24),
@@ -219,8 +222,8 @@ class _ReferralRightPanel extends StatelessWidget {
                 children: [
                   Icon(Icons.article_outlined, size: 56, color: const Color(0xFFCCCCCC)),
                   const Gap(12),
-                  const Text(
-                    '暂时还未获得推荐奖励，快去推荐好友吧！',
+                  Text(
+                    windowsText(locale, 'referral.empty'),
                     style: TextStyle(fontSize: 13, color: Color(0xFFAAAAAA)),
                     textAlign: TextAlign.center,
                   ),
@@ -235,14 +238,16 @@ class _ReferralRightPanel extends StatelessWidget {
 }
 
 class _RulesButton extends StatelessWidget {
-  const _RulesButton();
+  const _RulesButton({required this.locale});
+
+  final Locale locale;
 
   @override
   Widget build(BuildContext context) {
     return TextButton.icon(
       onPressed: () {},
       icon: const Icon(Icons.help_outline_rounded, size: 14, color: Color(0xFFCC5F8F)),
-      label: const Text('详细规则', style: TextStyle(fontSize: 12, color: Color(0xFFCC5F8F))),
+      label: Text(windowsText(locale, 'referral.rules'), style: const TextStyle(fontSize: 12, color: Color(0xFFCC5F8F))),
       style: TextButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         minimumSize: Size.zero,

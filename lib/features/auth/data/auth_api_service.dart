@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/widgets.dart';
 import 'package:hiddify/features/auth/model/auth_models.dart';
+import 'package:hiddify/features/home/widget/windows_localized_strings.dart';
 import 'package:hiddify/utils/custom_loggers.dart';
 
 /// LrtsVPN API 服务
@@ -24,37 +26,37 @@ class AuthApiService with InfraLogger {
         );
 
   /// 账号密码登录
-  Future<AuthResult> login(String account, String password) async {
+  Future<AuthResult> login(String account, String password, {String? fallbackErrorMessage}) async {
     final response = await _dio.post<Map<String, dynamic>>(
       '/login',
       data: {'account': account, 'password': password},
     );
     final json = response.data!;
     if (json['ret'] != 1) {
-      throw AuthException(json['msg'] as String? ?? '登录失败');
+      throw AuthException(json['msg'] as String? ?? fallbackErrorMessage ?? 'Login failed');
     }
     return AuthResult.fromJson(json['data'] as Map<String, dynamic>);
   }
 
   /// 注册新账号
-  Future<AuthResult> register(String account, String password) async {
+  Future<AuthResult> register(String account, String password, {String? fallbackErrorMessage}) async {
     final response = await _dio.post<Map<String, dynamic>>(
       '/register',
       data: {'account': account, 'password': password},
     );
     final json = response.data!;
     if (json['ret'] != 1) {
-      throw AuthException(json['msg'] as String? ?? '注册失败');
+      throw AuthException(json['msg'] as String? ?? fallbackErrorMessage ?? 'Register failed');
     }
     return AuthResult.fromJson(json['data'] as Map<String, dynamic>);
   }
 
   /// 发起设备授权 (浏览器登录流程第一步)
-  Future<DeviceAuthInfo> startDeviceAuth() async {
+  Future<DeviceAuthInfo> startDeviceAuth({String? fallbackErrorMessage}) async {
     final response = await _dio.post<Map<String, dynamic>>('/auth/device');  // ignore: avoid_redundant_argument_values
     final json = response.data!;
     if (json['ret'] != 1) {
-      throw const AuthException('获取设备码失败');
+      throw AuthException(fallbackErrorMessage ?? 'Failed to get device code');
     }
     return DeviceAuthInfo.fromJson(json['data'] as Map<String, dynamic>);
   }
@@ -64,7 +66,7 @@ class AuthApiService with InfraLogger {
   /// 返回 null 表示仍在等待中 (pending)
   /// 返回 AuthResult 表示授权成功
   /// 抛出 AuthException 表示设备码已过期
-  Future<AuthResult?> checkDeviceAuth(String deviceCode) async {
+  Future<AuthResult?> checkDeviceAuth(String deviceCode, {String? expiredErrorMessage}) async {
     final response = await _dio.get<Map<String, dynamic>>('/auth/check/$deviceCode');
     final json = response.data!;
     if (json['ret'] == 1) {
@@ -75,7 +77,7 @@ class AuthApiService with InfraLogger {
     }
     final data = json['data'] as Map<String, dynamic>?;
     if (data?['status'] == 'expired') {
-      throw const AuthException('授权已过期，请重新登录');
+      throw AuthException(expiredErrorMessage ?? 'Authorization expired. Please sign in again.');
     }
     return null; // pending
   }
@@ -88,11 +90,11 @@ class AuthApiService with InfraLogger {
   }
 
   /// 获取全部节点数据
-  Future<Map<String, dynamic>> getNodes(String token) async {
+  Future<Map<String, dynamic>> getNodes(String token, {String? fallbackErrorMessage}) async {
     final response = await _dio.get<Map<String, dynamic>>('/nodes/$token');
     final json = response.data!;
     if (json['ret'] != 1) {
-      throw AuthException(json['msg'] as String? ?? '获取节点失败');
+      throw AuthException(json['msg'] as String? ?? fallbackErrorMessage ?? 'Failed to get nodes');
     }
     return json['data'] as Map<String, dynamic>;
   }
@@ -107,18 +109,20 @@ class AuthApiService with InfraLogger {
   }
 
   /// 验证账号格式 (6-20位字母或数字)
-  static String? validateAccount(String? value) {
-    if (value == null || value.isEmpty) return '请输入账号';
-    if (value.length < 6 || value.length > 20) return '账号长度必须为6-20位';
-    if (!RegExp(r'^[a-zA-Z0-9]+$').hasMatch(value)) return '账号只能包含字母和数字';
+  static String? validateAccount(String? value, {Locale? locale}) {
+    final currentLocale = locale ?? const Locale('en');
+    if (value == null || value.isEmpty) return windowsText(currentLocale, 'auth.accountRequired');
+    if (value.length < 6 || value.length > 20) return windowsText(currentLocale, 'auth.accountLength');
+    if (!RegExp(r'^[a-zA-Z0-9]+$').hasMatch(value)) return windowsText(currentLocale, 'auth.accountAlnum');
     return null;
   }
 
   /// 验证密码格式 (6-20位字母或数字)
-  static String? validatePassword(String? value) {
-    if (value == null || value.isEmpty) return '请输入密码';
-    if (value.length < 6 || value.length > 20) return '密码长度必须为6-20位';
-    if (!RegExp(r'^[a-zA-Z0-9]+$').hasMatch(value)) return '密码只能包含字母和数字';
+  static String? validatePassword(String? value, {Locale? locale}) {
+    final currentLocale = locale ?? const Locale('en');
+    if (value == null || value.isEmpty) return windowsText(currentLocale, 'auth.passwordRequired');
+    if (value.length < 6 || value.length > 20) return windowsText(currentLocale, 'auth.passwordLength');
+    if (!RegExp(r'^[a-zA-Z0-9]+$').hasMatch(value)) return windowsText(currentLocale, 'auth.passwordAlnum');
     return null;
   }
 }

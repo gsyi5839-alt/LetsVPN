@@ -9,6 +9,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:hiddify/features/home/widget/windows_localized_strings.dart';
 
 const _space = 18.0;
 const _textStyle = TextStyle(fontSize: 16);
@@ -33,6 +34,11 @@ enum _SearchActions { next, prev }
 
 /// Supported editors for JSON Editor.
 enum Editors { tree, text }
+
+String _editorLabel(Locale locale, Editors editor) => switch (editor) {
+  Editors.tree => windowsText(locale, 'jsonEditor.tree'),
+  Editors.text => windowsText(locale, 'jsonEditor.text'),
+};
 
 const Map<String, Map<String, dynamic>> protocolSchemaValues = {
   "xray": {
@@ -715,6 +721,7 @@ class _JsonEditorState extends State<JsonEditor> {
 
   @override
   Widget build(BuildContext context) {
+    final locale = Localizations.localeOf(context);
     return Directionality(
       textDirection: TextDirection.ltr,
       child: DecoratedBox(
@@ -734,11 +741,11 @@ class _JsonEditorState extends State<JsonEditor> {
                   padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
                   child: Row(
                     children: [
-                      const Text('Config Editor:  '),
+                      Text('${windowsText(locale, 'jsonEditor.configEditor')}:  '),
                       if (!widget.hideEditorsMenuButton)
                         PopupMenuButton<Editors>(
                           initialValue: _editor,
-                          tooltip: 'Change editor',
+                          tooltip: windowsText(locale, 'jsonEditor.changeEditor'),
                           padding: EdgeInsets.zero,
                           onSelected: (value) {
                             if (value == Editors.text) {
@@ -758,21 +765,21 @@ class _JsonEditorState extends State<JsonEditor> {
                                 padding: const EdgeInsets.symmetric(horizontal: 12),
                                 enabled: widget.editors.contains(Editors.tree),
                                 value: Editors.tree,
-                                child: const Text("Tree"),
+                                child: Text(windowsText(locale, 'jsonEditor.tree')),
                               ),
                               PopupMenuItem<Editors>(
                                 height: _popupMenuHeight,
                                 padding: const EdgeInsets.symmetric(horizontal: 12),
                                 enabled: widget.editors.contains(Editors.text),
                                 value: Editors.text,
-                                child: const Text("Text"),
+                                child: Text(windowsText(locale, 'jsonEditor.text')),
                               ),
                             ];
                           },
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(_editor.name, style: _textStyle),
+                              Text(_editorLabel(locale, _editor), style: _textStyle),
                               const Icon(Icons.arrow_drop_down, size: 20),
                             ],
                           ),
@@ -784,11 +791,17 @@ class _JsonEditorState extends State<JsonEditor> {
                           onTap: () {
                             _controller.text = _stringifyData(_data, 0, true);
                           },
-                          child: const Tooltip(message: 'Format', child: Icon(Icons.format_align_left, size: 20)),
+                          child: Tooltip(
+                            message: windowsText(locale, 'jsonEditor.format'),
+                            child: const Icon(Icons.format_align_left, size: 20),
+                          ),
                         ),
                       ] else ...[
                         const SizedBox(width: 20),
-                        if (_results != null) ...[Text("$_results results"), const SizedBox(width: 5)],
+                        if (_results != null) ...[
+                          Text(windowsText(locale, 'jsonEditor.results', params: {'value': '$_results'})),
+                          const SizedBox(width: 5),
+                        ],
                         _SearchField(onSearch, onSearchAction),
                         const SizedBox(width: 20),
                         InkWell(
@@ -797,7 +810,10 @@ class _JsonEditorState extends State<JsonEditor> {
                             expandAllObjects(_data, ["config"]);
                             setState(() {});
                           },
-                          child: const Tooltip(message: 'Expand All', child: Icon(Icons.expand, size: 20)),
+                           child: Tooltip(
+                             message: windowsText(locale, 'jsonEditor.expandAll'),
+                             child: const Icon(Icons.expand, size: 20),
+                           ),
                         ),
                         const SizedBox(width: 20),
                         InkWell(
@@ -805,13 +821,19 @@ class _JsonEditorState extends State<JsonEditor> {
                             _expandedObjects.clear();
                             setState(() {});
                           },
-                          child: const Tooltip(message: 'Collapse All', child: Icon(Icons.compress, size: 20)),
+                           child: Tooltip(
+                             message: windowsText(locale, 'jsonEditor.collapseAll'),
+                             child: const Icon(Icons.compress, size: 20),
+                           ),
                         ),
                       ],
                       const SizedBox(width: 20),
                       InkWell(
                         onTap: copyData,
-                        child: const Tooltip(message: 'Copy', child: Icon(Icons.copy, size: 20)),
+                        child: Tooltip(
+                          message: windowsText(locale, 'common.copy'),
+                          child: const Icon(Icons.copy, size: 20),
+                        ),
                       ),
                       if (widget.actions.isNotEmpty) const SizedBox(width: 20),
                       ...widget.actions,
@@ -1299,6 +1321,7 @@ class _ReplaceTextWithFieldState extends State<_ReplaceTextWithField> {
 
   @override
   Widget build(BuildContext context) {
+    final locale = Localizations.localeOf(context);
     if (possibleValues.containsKey(widget.keyPath)) {
       final options = possibleValues[widget.keyPath]!;
       return Row(
@@ -1307,7 +1330,13 @@ class _ReplaceTextWithFieldState extends State<_ReplaceTextWithField> {
           Transform.scale(
             scale: 0.75,
             child: DropdownButton<String>(
-              hint: Text('Select ${widget.keyPath.replaceAll("config.outbounds", "")}'),
+              hint: Text(
+                windowsText(
+                  locale,
+                  'jsonEditor.select',
+                  params: {'value': widget.keyPath.replaceAll("config.outbounds", "")},
+                ),
+              ),
               value: _text,
               icon: const Icon(Icons.arrow_downward),
               iconSize: 24,
@@ -1395,33 +1424,34 @@ class _Options<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final locale = Localizations.localeOf(context);
     return PopupMenuButton<_OptionItems>(
-      tooltip: 'Add new object',
+      tooltip: windowsText(locale, 'jsonEditor.addNewObject'),
       padding: EdgeInsets.zero,
       onSelected: onSelected,
       itemBuilder: (context) {
         return <PopupMenuEntry<_OptionItems>>[
           if (keyPath != "config" && T == Map)
-            const _PopupMenuWidget(
+            _PopupMenuWidget(
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   SizedBox(width: 5),
                   Icon(Icons.add),
                   SizedBox(width: 10),
-                  Text("Insert", style: TextStyle(fontSize: 14)),
+                  Text(windowsText(locale, 'common.insert'), style: TextStyle(fontSize: 14)),
                 ],
               ),
             ),
           if (keyPath != "config" && T == List)
-            const _PopupMenuWidget(
+            _PopupMenuWidget(
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   SizedBox(width: 5),
                   Icon(Icons.add),
                   SizedBox(width: 10),
-                  Text("Append", style: TextStyle(fontSize: 14)),
+                  Text(windowsText(locale, 'common.append'), style: TextStyle(fontSize: 14)),
                 ],
               ),
             ),
@@ -1467,7 +1497,7 @@ class _Options<T> extends StatelessWidget {
             ],
             if (keyPath != "config" &&
                 !(T == List && (keyPath == "config.outbounds" || keyPath == "config.endpoints"))) ...[
-              const PopupMenuItem<_OptionItems>(
+              PopupMenuItem<_OptionItems>(
                 height: _popupMenuHeight,
                 padding: EdgeInsets.only(left: _popupMenuItemPadding),
                 value: "string",
@@ -1476,11 +1506,11 @@ class _Options<T> extends StatelessWidget {
                   children: [
                     Icon(Icons.abc),
                     SizedBox(width: 10),
-                    Text("String", style: TextStyle(fontSize: 14)),
+                    Text(windowsText(locale, 'jsonEditor.typeString'), style: TextStyle(fontSize: 14)),
                   ],
                 ),
               ),
-              const PopupMenuItem<_OptionItems>(
+              PopupMenuItem<_OptionItems>(
                 height: _popupMenuHeight,
                 padding: EdgeInsets.only(left: _popupMenuItemPadding),
                 value: "num",
@@ -1489,11 +1519,11 @@ class _Options<T> extends StatelessWidget {
                   children: [
                     Icon(Icons.onetwothree),
                     SizedBox(width: 10),
-                    Text("Number", style: TextStyle(fontSize: 14)),
+                    Text(windowsText(locale, 'jsonEditor.typeNumber'), style: TextStyle(fontSize: 14)),
                   ],
                 ),
               ),
-              const PopupMenuItem<_OptionItems>(
+              PopupMenuItem<_OptionItems>(
                 height: _popupMenuHeight,
                 padding: EdgeInsets.only(left: _popupMenuItemPadding),
                 value: "bool",
@@ -1502,11 +1532,11 @@ class _Options<T> extends StatelessWidget {
                   children: [
                     Icon(Icons.check_rounded),
                     SizedBox(width: 10),
-                    Text("Boolean", style: TextStyle(fontSize: 14)),
+                    Text(windowsText(locale, 'jsonEditor.typeBoolean'), style: TextStyle(fontSize: 14)),
                   ],
                 ),
               ),
-              const PopupMenuItem<_OptionItems>(
+              PopupMenuItem<_OptionItems>(
                 height: _popupMenuHeight,
                 padding: EdgeInsets.only(left: _popupMenuItemPadding),
                 value: "map",
@@ -1515,11 +1545,11 @@ class _Options<T> extends StatelessWidget {
                   children: [
                     Icon(Icons.data_object),
                     SizedBox(width: 10),
-                    Text("object", style: TextStyle(fontSize: 14)),
+                    Text(windowsText(locale, 'jsonEditor.typeObject'), style: TextStyle(fontSize: 14)),
                   ],
                 ),
               ),
-              const PopupMenuItem<_OptionItems>(
+              PopupMenuItem<_OptionItems>(
                 height: _popupMenuHeight,
                 padding: EdgeInsets.only(left: _popupMenuItemPadding),
                 value: "list",
@@ -1528,7 +1558,7 @@ class _Options<T> extends StatelessWidget {
                   children: [
                     Icon(Icons.data_array),
                     SizedBox(width: 10),
-                    Text("List", style: TextStyle(fontSize: 14)),
+                    Text(windowsText(locale, 'jsonEditor.typeList'), style: TextStyle(fontSize: 14)),
                   ],
                 ),
               ),
@@ -1536,7 +1566,7 @@ class _Options<T> extends StatelessWidget {
           ],
           const PopupMenuDivider(height: 1),
           if (keyPath != "config" && !(T == List && (keyPath == "config.outbounds" || keyPath == "config.endpoints")))
-            const PopupMenuItem<_OptionItems>(
+            PopupMenuItem<_OptionItems>(
               height: _popupMenuHeight,
               padding: EdgeInsets.only(left: 5),
               value: "delete",
@@ -1545,7 +1575,7 @@ class _Options<T> extends StatelessWidget {
                 children: [
                   Icon(Icons.delete),
                   SizedBox(width: 10),
-                  Text("Delete", style: TextStyle(fontSize: 14)),
+                  Text(MaterialLocalizations.of(context).deleteButtonTooltip, style: TextStyle(fontSize: 14)),
                 ],
               ),
             ),
@@ -1586,6 +1616,7 @@ class _SearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final locale = Localizations.localeOf(context);
     return ColoredBox(
       color: Theme.of(context).searchBarTheme.backgroundColor?.resolve({}) ?? Colors.black,
       child: Row(
@@ -1602,7 +1633,7 @@ class _SearchField extends StatelessWidget {
             // style: _textStyle,
             cursorHeight: 12,
             decoration: InputDecoration(
-              hintText: "Search",
+              hintText: MaterialLocalizations.of(context).searchFieldLabel,
               hintStyle: Theme.of(context).textTheme.bodySmall,
               constraints: const BoxConstraints(maxWidth: 100),
               border: InputBorder.none,
@@ -1619,14 +1650,20 @@ class _SearchField extends StatelessWidget {
             onTap: () {
               onAction(_SearchActions.next);
             },
-            child: const Tooltip(message: 'Next', child: Icon(Icons.keyboard_arrow_down_rounded, size: 20)),
+            child: Tooltip(
+              message: windowsText(locale, 'common.searchNext'),
+              child: const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
+            ),
           ),
           const SizedBox(width: 2),
           InkWell(
             onTap: () {
               onAction(_SearchActions.prev);
             },
-            child: const Tooltip(message: 'Previous', child: Icon(Icons.keyboard_arrow_up_rounded, size: 20)),
+            child: Tooltip(
+              message: windowsText(locale, 'common.searchPrevious'),
+              child: const Icon(Icons.keyboard_arrow_up_rounded, size: 20),
+            ),
           ),
           const SizedBox(width: 5),
         ],

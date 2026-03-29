@@ -13,4 +13,6 @@ locales:
   - pt
   - ru
   - tr
+  - zh_CN
+  - zh_TW
 script_template: inno_setup.sas
