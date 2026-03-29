@@ -9,9 +9,9 @@
 
 namespace
 {
-constexpr wchar_t kMainWindowTitle[] = L"Hiddify";
+constexpr wchar_t kMainWindowTitle[] = L"LetsVPN";
 constexpr wchar_t kDisplayWindowTitle[] = L"LetsVPN";
-constexpr wchar_t kSingleInstanceMutex[] = L"HiddifyMutex";
+constexpr wchar_t kSingleInstanceMutex[] = L"LetsVPNMutex";
 } // namespace
 
 bool SendAppLinkToInstance(const std::wstring &title)

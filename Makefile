@@ -63,6 +63,7 @@ endif
 
 BUILD_ARGS=--dart-define sentry_dsn=$(SENTRY_DSN)
 DISTRIBUTOR_ARGS=--skip-clean --build-target $(TARGET) --build-dart-define sentry_dsn=$(SENTRY_DSN)
+WINDOWS_ARTIFACT_NAME=LetsVPN-{{build_name}}{{#has_build_number}}+{{build_number}}{{/has_build_number}}-{{platform}}{{#is_installer}}-setup{{/is_installer}}{{#ext}}.{{ext}}{{/ext}}
 
 
 
@@ -291,6 +292,7 @@ windows-zip-release:
 	  --platform windows \
 	  --targets zip \
 	  --skip-clean \
+	  --artifact-name='$(WINDOWS_ARTIFACT_NAME)' \
 	  --build-target=$(TARGET) \
 	  --build-dart-define=sentry_dsn=$(SENTRY_DSN) \
 	  --build-dart-define=portable=true
@@ -301,11 +303,11 @@ windows-zip-release:
 	$(YELLOW)Post-processing Windows portable$(DONE); \
 	cd "$$ZIP_DIR"; \
 	$(BLUE)Extracting and Repacking...$(DONE); \
-	mkdir -p Hiddify; \
-	unzip -q "$$ZIP_FILE" -d Hiddify/; \
+	mkdir -p LetsVPN; \
+	unzip -q "$$ZIP_FILE" -d LetsVPN/; \
 	rm "$$ZIP_FILE"; \
-	tar -a -cf "$$FILE_NAME.zip" Hiddify; \
-	rm -rf Hiddify; \
+	tar -a -cf "$$FILE_NAME.zip" LetsVPN; \
+	rm -rf LetsVPN; \
 	$(GREEN)Successful$(DONE)
 
 windows-exe-release:
@@ -313,6 +315,7 @@ windows-exe-release:
 	  --platform windows \
 	  --targets exe \
 	  --skip-clean \
+	  --artifact-name='$(WINDOWS_ARTIFACT_NAME)' \
 	  --build-target=$(TARGET) \
 	  --build-dart-define=sentry_dsn=$(SENTRY_DSN)
 
@@ -321,6 +324,7 @@ windows-msix-release:
 	  --platform windows \
 	  --targets msix \
 	  --skip-clean \
+	  --artifact-name='$(WINDOWS_ARTIFACT_NAME)' \
 	  --build-target=$(TARGET) \
 	  --build-dart-define=sentry_dsn=$(SENTRY_DSN)
 
