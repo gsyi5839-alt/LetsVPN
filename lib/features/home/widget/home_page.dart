@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -351,6 +352,7 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
     final authState = ref.watch(authNotifierProvider);
     final activeProfile = ref.watch(activeProfileProvider).valueOrNull;
     final connectionState = ref.watch(connectionNotifierProvider).valueOrNull ?? const Disconnected();
+    final t = ref.watch(translationsProvider).requireValue;
     final selectedSection = useState(_WindowsMenuSection.home);
     final showWelcomeNotification = useState(true);
 
@@ -358,18 +360,19 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
     final selectedCountryName = _kCountries[selectedCountryIndex].$2;
     final serviceMode = ref.watch(ConfigOptions.serviceMode);
     final autoStartState = ref.watch(autoStartNotifierProvider);
-    final sharedPrefs = ref.watch(sharedPreferencesProvider).requireValue;
-    final persistedLocale = sharedPrefs.getString("locale");
 
     final now = DateTime.now();
     final expireAt = activeProfile?.mapOrNull(remote: (value) => value.subInfo?.expire);
     final hasFutureExpireAt = expireAt != null && expireAt.isAfter(now);
+    final showLifetime = authState.isLoggedIn;
     final remainMinutes = hasFutureExpireAt ? max(expireAt!.difference(now).inMinutes, 0) : 0;
-    final countdownDigits = hasFutureExpireAt
+    final countdownDigits = showLifetime
+        ? const ['∞', '∞', '∞', '∞']
+        : hasFutureExpireAt
         ? remainMinutes.clamp(0, 9999).toString().padLeft(4, '0').split('')
         : const ['0', '0', '0', '0'];
-    final memberHeaderTitle = hasFutureExpireAt ? '会员剩余时长(分钟)' : '会员已过期，剩余时长(分钟)';
-    final memberExpireText = expireAt == null ? '不限时' : _formatDateTimeValue(expireAt);
+    final memberHeaderTitle = showLifetime ? '会员状态' : (hasFutureExpireAt ? '会员剩余时长(分钟)' : '会员已过期，剩余时长(分钟)');
+    final memberExpireText = showLifetime ? '不限时' : (expireAt == null ? '不限时' : _formatDateTimeValue(expireAt));
 
     final isDisconnected = connectionState is Disconnected || connectionState is Disconnecting;
     final statusText = switch (connectionState) {
@@ -384,13 +387,11 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
     final hasAccountName = accountName != null && accountName.isNotEmpty;
     final accountDisplayName = authState.isLoggedIn ? (hasAccountName ? accountName : '已登录账户') : '未登录账户';
     final accountId = authState.uuid?.trim().isNotEmpty == true ? authState.uuid!.trim() : '441337052';
-    final membershipTagText = hasFutureExpireAt ? '会员中' : '已过期';
-    final membershipTagTextColor = hasFutureExpireAt ? const Color(0xFF1F69C9) : const Color(0xFF9BA5AF);
-    final membershipTagBackground = hasFutureExpireAt ? const Color(0xFFE9F1FF) : Colors.white;
-    final localeDropdownValue =
-        persistedLocale != null && AppLocale.values.any((locale) => locale.name == persistedLocale)
-        ? persistedLocale
-        : 'system';
+    final membershipTagText = showLifetime ? '永久使用' : (hasFutureExpireAt ? '会员中' : '已过期');
+    final membershipTagTextColor = (showLifetime || hasFutureExpireAt)
+        ? const Color(0xFF1F69C9)
+        : const Color(0xFF9BA5AF);
+    final membershipTagBackground = (showLifetime || hasFutureExpireAt) ? const Color(0xFFE9F1FF) : Colors.white;
 
     useEffect(() {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -406,77 +407,112 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
       return null;
     }, const []);
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFEFF3F7),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _WindowsTitleBar(
-              title: 'LetsVPN (ID: $accountId )',
-              accountId: accountId,
-              onMinimize: () async => await windowManager.minimize(),
-              onClose: () async => await ref.read(windowNotifierProvider.notifier).exit(),
-            ),
-            Expanded(
-              child: Row(
-                children: [
-                  Container(
-                    width: 246,
-                    color: const Color(0xFFC7D0D9),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Container(
-                          color: const Color(0xFFB8C3CE),
-                          padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 72,
-                                    height: 72,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: const Color(0xFFD6DDE4),
-                                      border: Border.all(color: const Color(0xFF9AA6B1), width: 2),
-                                    ),
-                                    child: const Icon(Icons.person, size: 46, color: Color(0xFF98A5B0)),
-                                  ),
-                                  const Gap(14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+    useEffect(() {
+      DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
+        if (call.method == 'auth-updated') {
+          await ref.read(authNotifierProvider.notifier).refreshFromStorageFromDisk();
+          return true;
+        }
+        return null;
+      });
+      return () => DesktopMultiWindow.setMethodHandler(null);
+    }, const []);
+
+    useEffect(() {
+      if (authState.isLoggedIn) {
+        return null;
+      }
+      final timer = Timer.periodic(const Duration(seconds: 3), (_) async {
+        await ref.read(authNotifierProvider.notifier).refreshFromStorageFromDisk();
+      });
+      return timer.cancel;
+    }, [authState.isLoggedIn]);
+
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: Scaffold(
+        backgroundColor: const Color(0xFFEFF3F7),
+        body: SafeArea(
+          child: Column(
+            children: [
+              _WindowsTitleBar(
+                title: 'LetsVPN (ID: $accountId )',
+                accountId: accountId,
+                onMinimize: () async => await windowManager.minimize(),
+                onClose: () async => await ref.read(windowNotifierProvider.notifier).exit(),
+              ),
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      width: 246,
+                      color: const Color(0xFFC7D0D9),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Container(
+                            color: const Color(0xFFB8C3CE),
+                            padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                MouseRegion(
+                                  cursor: SystemMouseCursors.click,
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () => showLoginDialog(context),
+                                    child: Row(
                                       children: [
-                                        Text(
-                                          accountDisplayName,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 34 / 1.6,
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFF1F252C),
-                                          ),
-                                        ),
-                                        const Gap(5),
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                                          width: 72,
+                                          height: 72,
                                           decoration: BoxDecoration(
-                                            borderRadius: BorderRadius.circular(999),
-                                            color: membershipTagBackground,
+                                            shape: BoxShape.circle,
+                                            color: const Color(0xFFD6DDE4),
+                                            border: Border.all(color: const Color(0xFF9AA6B1), width: 2),
                                           ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
+                                          child: const Icon(Icons.person, size: 46, color: Color(0xFF98A5B0)),
+                                        ),
+                                        const Gap(14),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
-                                              Icon(Icons.diamond_rounded, size: 13, color: membershipTagTextColor),
-                                              const Gap(4),
                                               Text(
-                                                membershipTagText,
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  color: membershipTagTextColor,
+                                                accountDisplayName,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontSize: 34 / 1.6,
                                                   fontWeight: FontWeight.w700,
+                                                  color: Color(0xFF1F252C),
+                                                ),
+                                              ),
+                                              const Gap(5),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                                                decoration: BoxDecoration(
+                                                  borderRadius: BorderRadius.circular(999),
+                                                  color: membershipTagBackground,
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Icon(
+                                                      Icons.diamond_rounded,
+                                                      size: 13,
+                                                      color: membershipTagTextColor,
+                                                    ),
+                                                    const Gap(4),
+                                                    Text(
+                                                      membershipTagText,
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        color: membershipTagTextColor,
+                                                        fontWeight: FontWeight.w700,
+                                                      ),
+                                                    ),
+                                                  ],
                                                 ),
                                               ),
                                             ],
@@ -485,157 +521,148 @@ class _WindowsDesktopHomePage extends HookConsumerWidget {
                                       ],
                                     ),
                                   ),
-                                ],
+                                ),
+                                const Gap(14),
+                                Text(
+                                  '到期时间: $memberExpireText',
+                                  style: const TextStyle(
+                                    color: Color(0xFF2C333A),
+                                    fontSize: 20 / 1.4,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Divider(height: 1, color: Color(0x3394A1AF)),
+                          _WindowsSidebarItem(
+                            icon: Icons.home_outlined,
+                            title: t.pages.home.title,
+                            selected: selectedSection.value == _WindowsMenuSection.home,
+                            onTap: () => selectedSection.value = _WindowsMenuSection.home,
+                          ),
+                          _WindowsSidebarItem(
+                            icon: Icons.public_rounded,
+                            title: t.pages.settings.routing.region,
+                            selected: selectedSection.value == _WindowsMenuSection.region,
+                            onTap: () => selectedSection.value = _WindowsMenuSection.region,
+                          ),
+                          _WindowsSidebarItem(
+                            icon: Icons.card_giftcard_outlined,
+                            title: '推荐有奖',
+                            selected: selectedSection.value == _WindowsMenuSection.referral,
+                            showRedDot: true,
+                            onTap: () => selectedSection.value = _WindowsMenuSection.referral,
+                          ),
+                          _WindowsSidebarItem(
+                            icon: Icons.credit_card_outlined,
+                            title: '免费领会员',
+                            selected: selectedSection.value == _WindowsMenuSection.freeMembership,
+                            onTap: () => selectedSection.value = _WindowsMenuSection.freeMembership,
+                          ),
+                          _WindowsSidebarItem(
+                            icon: Icons.notifications_none_rounded,
+                            title: '消息中心',
+                            selected: selectedSection.value == _WindowsMenuSection.messages,
+                            badgeText: '2',
+                            onTap: () => selectedSection.value = _WindowsMenuSection.messages,
+                          ),
+                          _WindowsSidebarItem(
+                            icon: Icons.settings_outlined,
+                            title: t.pages.settings.title,
+                            selected: selectedSection.value == _WindowsMenuSection.settings,
+                            onTap: () => selectedSection.value = _WindowsMenuSection.settings,
+                          ),
+                          _WindowsSidebarItem(
+                            icon: Icons.support_agent_outlined,
+                            title: '在线客服',
+                            selected: false,
+                            onTap: () => UriUtils.tryLaunch(
+                              Uri.parse(
+                                'https://www.interhelp.net/letsvpn-world/en/collections/1611781-%E4%B8%AD%E6%96%87%E5%B8%AE%E5%8A%A9',
                               ),
-                              const Gap(14),
-                              Text(
-                                '到期时间: $memberExpireText',
-                                style: const TextStyle(
-                                  color: Color(0xFF2C333A),
-                                  fontSize: 20 / 1.4,
-                                  fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                          const Spacer(),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 40),
+                            child: SizedBox(
+                              height: 38,
+                              child: FilledButton(
+                                onPressed: () => UriUtils.tryLaunch(Uri.parse('https://www.palyps.com/account')),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: const Color(0xFF1064D1),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
+                                ),
+                                child: const Text(
+                                  '续费会员',
+                                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white),
                                 ),
                               ),
-                            ],
-                          ),
-                        ),
-                        const Divider(height: 1, color: Color(0x3394A1AF)),
-                        _WindowsSidebarItem(
-                          icon: Icons.home_outlined,
-                          title: '首页',
-                          selected: selectedSection.value == _WindowsMenuSection.home,
-                          onTap: () => selectedSection.value = _WindowsMenuSection.home,
-                        ),
-                        _WindowsSidebarItem(
-                          icon: Icons.public_rounded,
-                          title: '变更国家和地区',
-                          selected: selectedSection.value == _WindowsMenuSection.region,
-                          onTap: () => selectedSection.value = _WindowsMenuSection.region,
-                        ),
-                        _WindowsSidebarItem(
-                          icon: Icons.card_giftcard_outlined,
-                          title: '推荐有奖',
-                          selected: selectedSection.value == _WindowsMenuSection.referral,
-                          showRedDot: true,
-                          onTap: () => selectedSection.value = _WindowsMenuSection.referral,
-                        ),
-                        _WindowsSidebarItem(
-                          icon: Icons.credit_card_outlined,
-                          title: '免费领会员',
-                          selected: selectedSection.value == _WindowsMenuSection.freeMembership,
-                          onTap: () => selectedSection.value = _WindowsMenuSection.freeMembership,
-                        ),
-                        _WindowsSidebarItem(
-                          icon: Icons.notifications_none_rounded,
-                          title: '消息中心',
-                          selected: selectedSection.value == _WindowsMenuSection.messages,
-                          badgeText: '2',
-                          onTap: () => selectedSection.value = _WindowsMenuSection.messages,
-                        ),
-                        _WindowsSidebarItem(
-                          icon: Icons.settings_outlined,
-                          title: '软件设置',
-                          selected: selectedSection.value == _WindowsMenuSection.settings,
-                          onTap: () => selectedSection.value = _WindowsMenuSection.settings,
-                        ),
-                        _WindowsSidebarItem(
-                          icon: Icons.support_agent_outlined,
-                          title: '在线客服',
-                          selected: false,
-                          onTap: () => UriUtils.tryLaunch(
-                            Uri.parse(
-                              'https://www.interhelp.net/letsvpn-world/en/collections/1611781-%E4%B8%AD%E6%96%87%E5%B8%AE%E5%8A%A9',
                             ),
                           ),
-                        ),
-                        const Spacer(),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 40),
-                          child: SizedBox(
-                            height: 38,
-                            child: FilledButton(
-                              onPressed: () => UriUtils.tryLaunch(Uri.parse('https://www.palyps.com/account')),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFF1064D1),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
-                              ),
-                              child: const Text('续费会员', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white)),
+                          const Gap(14),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(52, 0, 52, 20),
+                            child: Row(
+                              children: [
+                                Text(
+                                  '版本号： ${appInfo.presentVersion}',
+                                  style: const TextStyle(color: Color(0xFF2F3A45), fontSize: 13),
+                                ),
+                                const Spacer(),
+                                const Icon(Icons.refresh_rounded, size: 18, color: Color(0xFF2F3A45)),
+                              ],
                             ),
                           ),
-                        ),
-                        const Gap(14),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(52, 0, 52, 20),
-                          child: Row(
-                            children: [
-                              Text(
-                                '版本号： ${appInfo.presentVersion}',
-                                style: const TextStyle(color: Color(0xFF2F3A45), fontSize: 13),
-                              ),
-                              const Spacer(),
-                              const Icon(Icons.refresh_rounded, size: 18, color: Color(0xFF2F3A45)),
-                            ],
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(34, 12, 34, 20),
+                        child: switch (selectedSection.value) {
+                          _WindowsMenuSection.home => _WindowsHomeSection(
+                            countdownDigits: countdownDigits,
+                            memberHeaderTitle: memberHeaderTitle,
+                            connectionState: connectionState,
+                            statusText: statusText,
+                            selectedCountryName: selectedCountryName,
+                            quickActionText: quickActionText,
+                            showWelcomeNotification: showWelcomeNotification.value,
+                            onDismissNotification: () => showWelcomeNotification.value = false,
+                            onQuickAction: () async =>
+                                await _handleQuickAction(ref: ref, isDisconnected: isDisconnected),
                           ),
-                        ),
-                      ],
+                          _WindowsMenuSection.region => _WindowsRegionSection(
+                            selectedIndex: selectedCountryIndex,
+                            serviceMode: serviceMode,
+                            onSelectCountry: (index) async => await _applyCountrySelection(ref, index),
+                            onModeChanged: (mode) async =>
+                                await ref.read(ConfigOptions.serviceMode.notifier).update(mode),
+                          ),
+                          _WindowsMenuSection.referral => _WindowsReferralSection(userId: accountId),
+                          _WindowsMenuSection.freeMembership => const _WindowsFreeMembershipSection(),
+                          _WindowsMenuSection.messages => const _WindowsMessagesSection(),
+                          _WindowsMenuSection.settings => _WindowsSettingsSection(
+                            autoStartEnabled: autoStartState.valueOrNull ?? false,
+                            onAutoStartChanged: (enabled) async {
+                              if (enabled) {
+                                await ref.read(autoStartNotifierProvider.notifier).enable();
+                              } else {
+                                await ref.read(autoStartNotifierProvider.notifier).disable();
+                              }
+                            },
+                            currentVersion: appInfo.presentVersion,
+                          ),
+                        },
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(34, 12, 34, 20),
-                      child: switch (selectedSection.value) {
-                        _WindowsMenuSection.home => _WindowsHomeSection(
-                          countdownDigits: countdownDigits,
-                          memberHeaderTitle: memberHeaderTitle,
-                          connectionState: connectionState,
-                          statusText: statusText,
-                          selectedCountryName: selectedCountryName,
-                          quickActionText: quickActionText,
-                          showWelcomeNotification: showWelcomeNotification.value,
-                          onDismissNotification: () => showWelcomeNotification.value = false,
-                          onQuickAction: () async => await _handleQuickAction(ref: ref, isDisconnected: isDisconnected),
-                        ),
-                        _WindowsMenuSection.region => _WindowsRegionSection(
-                          selectedIndex: selectedCountryIndex,
-                          serviceMode: serviceMode,
-                          onSelectCountry: (index) async => await _applyCountrySelection(ref, index),
-                          onModeChanged: (mode) async =>
-                              await ref.read(ConfigOptions.serviceMode.notifier).update(mode),
-                        ),
-                        _WindowsMenuSection.referral => _WindowsReferralSection(userId: accountId),
-                        _WindowsMenuSection.freeMembership => const _WindowsFreeMembershipSection(),
-                        _WindowsMenuSection.messages => const _WindowsMessagesSection(),
-                        _WindowsMenuSection.settings => _WindowsSettingsSection(
-                          autoStartEnabled: autoStartState.valueOrNull ?? false,
-                          onAutoStartChanged: (enabled) async {
-                            if (enabled) {
-                              await ref.read(autoStartNotifierProvider.notifier).enable();
-                            } else {
-                              await ref.read(autoStartNotifierProvider.notifier).disable();
-                            }
-                          },
-                          localeDropdownValue: localeDropdownValue,
-                          onLocaleChanged: (value) async {
-                            if (value == 'system') {
-                              await sharedPrefs.remove("locale");
-                              ref.invalidate(localePreferencesProvider);
-                              return;
-                            }
-                            final locale = AppLocale.values.firstWhere(
-                              (item) => item.name == value,
-                              orElse: () => AppLocale.en,
-                            );
-                            await ref.read(localePreferencesProvider.notifier).changeLocale(locale);
-                          },
-                          currentVersion: appInfo.presentVersion,
-                        ),
-                      },
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -773,12 +800,7 @@ class _WinCtrlButtonState extends State<_WinCtrlButton> {
 }
 
 class _WindowsTitleBar extends StatelessWidget {
-  const _WindowsTitleBar({
-    required this.title,
-    required this.onMinimize,
-    required this.onClose,
-    this.accountId,
-  });
+  const _WindowsTitleBar({required this.title, required this.onMinimize, required this.onClose, this.accountId});
 
   final String title;
   final String? accountId;
@@ -833,31 +855,13 @@ class _WindowsTitleBar extends StatelessWidget {
             titleWidget,
             const Spacer(),
             // ≡ 菜单按鈕
-            _WinCtrlButton(
-              onPressed: () {},
-              icon: Icons.menu_rounded,
-              iconSize: 16,
-            ),
+            _WinCtrlButton(onPressed: () {}, icon: Icons.menu_rounded, iconSize: 16),
             // 最小化
-            _WinCtrlButton(
-              onPressed: onMinimize,
-              icon: Icons.remove_rounded,
-              iconSize: 14,
-            ),
+            _WinCtrlButton(onPressed: onMinimize, icon: Icons.remove_rounded, iconSize: 14),
             // 最大化（固定尺寸窗口，禁用状态）
-            _WinCtrlButton(
-              onPressed: () {},
-              icon: Icons.open_in_full_rounded,
-              iconSize: 10,
-              disabled: true,
-            ),
+            _WinCtrlButton(onPressed: () {}, icon: Icons.open_in_full_rounded, iconSize: 10, disabled: true),
             // 关闭
-            _WinCtrlButton(
-              onPressed: onClose,
-              icon: Icons.close_rounded,
-              iconSize: 14,
-              isClose: true,
-            ),
+            _WinCtrlButton(onPressed: onClose, icon: Icons.close_rounded, iconSize: 14, isClose: true),
           ],
         ),
       ),
@@ -920,6 +924,9 @@ class _WindowsSidebarItem extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
                   style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
@@ -1071,22 +1078,14 @@ class _WindowsHomeSection extends StatelessWidget {
                           maxLines: 1,
                           softWrap: false,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 28,
-                            color: Color(0xFF1A2332),
-                            fontWeight: FontWeight.w400,
-                          ),
+                          style: const TextStyle(fontSize: 28, color: Color(0xFF1A2332), fontWeight: FontWeight.w400),
                         ),
                         const Gap(10),
                         Text(
                           '网络： $selectedCountryName',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF5C6878),
-                            fontWeight: FontWeight.w400,
-                          ),
+                          style: const TextStyle(fontSize: 14, color: Color(0xFF5C6878), fontWeight: FontWeight.w400),
                         ),
                         const Gap(22),
                         SizedBox(
@@ -1101,11 +1100,7 @@ class _WindowsHomeSection extends StatelessWidget {
                             ),
                             child: Text(
                               quickActionText,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 22,
-                                color: Colors.white,
-                              ),
+                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 22, color: Colors.white),
                             ),
                           ),
                         ),
@@ -1722,29 +1717,53 @@ class _WindowsSettingsSection extends HookConsumerWidget {
   const _WindowsSettingsSection({
     required this.autoStartEnabled,
     required this.onAutoStartChanged,
-    required this.localeDropdownValue,
-    required this.onLocaleChanged,
     required this.currentVersion,
   });
 
   final bool autoStartEnabled;
   final ValueChanged<bool> onAutoStartChanged;
-  final String localeDropdownValue;
-  final ValueChanged<String> onLocaleChanged;
   final String currentVersion;
+
+  Future<void> _handleLocaleChanged(WidgetRef ref, String value) async {
+    final sharedPrefs = ref.read(sharedPreferencesProvider).requireValue;
+    if (value == 'system') {
+      await sharedPrefs.remove("locale");
+      ref.invalidate(localePreferencesProvider);
+      return;
+    }
+    final locale = AppLocale.values.firstWhere((item) => item.name == value, orElse: () => AppLocale.en);
+    await ref.read(localePreferencesProvider.notifier).changeLocale(locale);
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(translationsProvider).requireValue;
+    final locale = ref.watch(localePreferencesProvider);
+    final sharedPrefs = ref.watch(sharedPreferencesProvider).requireValue;
+    final persistedLocale = sharedPrefs.getString("locale");
+    final localeDropdownValue = persistedLocale != null && AppLocale.values.any((item) => item.name == persistedLocale)
+        ? persistedLocale
+        : 'system';
+
+    const localeTextStyle = TextStyle(fontSize: 14, color: Color(0xFF1A2332), fontWeight: FontWeight.w500);
     final localeOptions = <DropdownMenuItem<String>>[
-      const DropdownMenuItem<String>(value: 'system', child: Text('跟随系统')),
-      ...AppLocale.values.map((locale) => DropdownMenuItem<String>(value: locale.name, child: Text(locale.localeName))),
+      DropdownMenuItem<String>(
+        value: 'system',
+        child: Text(t.pages.settings.general.themeModes.system, style: localeTextStyle),
+      ),
+      ...AppLocale.values.map(
+        (locale) => DropdownMenuItem<String>(
+          value: locale.name,
+          child: Text(locale.localeName, style: localeTextStyle),
+        ),
+      ),
     ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          '软件设置',
+        Text(
+          t.pages.settings.title,
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Color(0xFF1A2332)),
         ),
         const Gap(14),
@@ -1754,40 +1773,51 @@ class _WindowsSettingsSection extends HookConsumerWidget {
               const Divider(height: 1, color: Color(0xFFEBF0F5)),
               const Gap(14),
               Row(
-                children: const [
-                  Icon(Icons.adjust_rounded, size: 20, color: Color(0xFF1A2332)),
-                  Gap(10),
+                children: [
+                  const Icon(Icons.adjust_rounded, size: 20, color: Color(0xFF1A2332)),
+                  const Gap(10),
                   Text(
-                    '开机启动',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF1A2332)),
+                    t.pages.settings.general.autoStart,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF1A2332)),
                   ),
                 ],
               ),
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Padding(
-                      padding: EdgeInsets.only(left: 2, top: 8),
+                      padding: const EdgeInsets.only(left: 2, top: 8),
                       child: Text(
-                        '系统占用资源较少，建议开启开机自动启动。',
-                        style: TextStyle(fontSize: 20 / 1.4, color: Color(0xFF1F2328)),
+                        locale.languageCode == 'zh' ? '建议开启开机自动启动。' : 'Recommended to enable auto start at login.',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 20 / 1.4, color: Color(0xFF1F2328)),
                       ),
                     ),
                   ),
                   Switch.adaptive(value: autoStartEnabled, onChanged: onAutoStartChanged),
-                  const Text('开启', style: TextStyle(fontSize: 18, color: Color(0xFF1F2328))),
+                  SizedBox(
+                    width: 72,
+                    child: Text(
+                      t.pages.settings.routing.ipv6Modes.enable,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.end,
+                      style: const TextStyle(fontSize: 18, color: Color(0xFF1F2328)),
+                    ),
+                  ),
                 ],
               ),
               const Gap(10),
               const Divider(height: 1, color: Color(0xFFEBF0F5)),
               const Gap(14),
               Row(
-                children: const [
-                  Icon(Icons.translate_rounded, size: 20, color: Color(0xFF1A2332)),
-                  Gap(10),
+                children: [
+                  const Icon(Icons.translate_rounded, size: 20, color: Color(0xFF1A2332)),
+                  const Gap(10),
                   Text(
-                    '显示语言',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF1A2332)),
+                    t.pages.settings.general.locale,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF1A2332)),
                   ),
                 ],
               ),
@@ -1797,9 +1827,13 @@ class _WindowsSettingsSection extends HookConsumerWidget {
                 child: DropdownButtonFormField<String>(
                   value: localeDropdownValue,
                   items: localeOptions,
+                  style: localeTextStyle,
+                  dropdownColor: const Color(0xFFF7FAFF),
+                  iconEnabledColor: const Color(0xFF1A2332),
+                  iconDisabledColor: const Color(0xFF8895A3),
                   onChanged: (value) {
                     if (value != null) {
-                      onLocaleChanged(value);
+                      unawaited(_handleLocaleChanged(ref, value));
                     }
                   },
                   decoration: const InputDecoration(
@@ -1815,25 +1849,34 @@ class _WindowsSettingsSection extends HookConsumerWidget {
               const Divider(height: 1, color: Color(0xFFEBF0F5)),
               const Gap(14),
               Row(
-                children: const [
-                  Icon(Icons.info_outline_rounded, size: 20, color: Color(0xFF1A2332)),
-                  Gap(10),
+                children: [
+                  const Icon(Icons.info_outline_rounded, size: 20, color: Color(0xFF1A2332)),
+                  const Gap(10),
                   Text(
-                    '关于我们',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF1A2332)),
+                    t.pages.about.title,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF1A2332)),
                   ),
                 ],
               ),
               const Gap(10),
               Row(
                 children: [
-                  Text('当前版本： $currentVersion', style: const TextStyle(fontSize: 18, color: Color(0xFF1F2328))),
-                  const Gap(36),
+                  Expanded(
+                    child: Text(
+                      locale.languageCode == 'zh' ? '当前版本： $currentVersion' : 'Current version: $currentVersion',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 18, color: Color(0xFF1F2328)),
+                    ),
+                  ),
+                  const Gap(16),
                   InkWell(
                     onTap: () => UriUtils.tryLaunch(Uri.parse(Constants.appCastUrl)),
-                    child: const Text(
-                      '检查更新',
-                      style: TextStyle(
+                    child: Text(
+                      t.pages.about.checkForUpdate,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
                         fontSize: 18,
                         color: Color(0xFF1B73DE),
                         decoration: TextDecoration.underline,
@@ -1846,15 +1889,24 @@ class _WindowsSettingsSection extends HookConsumerWidget {
               const Gap(16),
               InkWell(
                 onTap: () => UriUtils.tryLaunch(Uri.parse(Constants.privacyPolicyUrl)),
-                child: const Text('隐私协议', style: TextStyle(fontSize: 18, color: Color(0xFF1B73DE))),
+                child: Text(
+                  t.pages.about.privacyPolicy,
+                  style: const TextStyle(fontSize: 18, color: Color(0xFF1B73DE)),
+                ),
               ),
               const Gap(8),
               InkWell(
                 onTap: () => UriUtils.tryLaunch(Uri.parse(Constants.termsAndConditionsUrl)),
-                child: const Text('服务条款', style: TextStyle(fontSize: 18, color: Color(0xFF1B73DE))),
+                child: Text(
+                  t.pages.about.termsAndConditions,
+                  style: const TextStyle(fontSize: 18, color: Color(0xFF1B73DE)),
+                ),
               ),
               const Gap(8),
-              const Text('版权所有 © LetsVPN 团队', style: TextStyle(fontSize: 18, color: Color(0xFF1F2328))),
+              Text(
+                locale.languageCode == 'zh' ? '版权所有 © LetsVPN 团队' : 'Copyright © LetsVPN Team',
+                style: const TextStyle(fontSize: 18, color: Color(0xFF1F2328)),
+              ),
               const Gap(20),
             ],
           ),
@@ -2182,10 +2234,7 @@ class _ConnectionStatusBadgeState extends State<_ConnectionStatusBadge> with Tic
                 children: [
                   for (int i = 0; i < 3; i++)
                     Transform.translate(
-                      offset: Offset(
-                        midOffset * cos(base + i * 2 * pi / 3),
-                        midOffset * sin(base + i * 2 * pi / 3),
-                      ),
+                      offset: Offset(midOffset * cos(base + i * 2 * pi / 3), midOffset * sin(base + i * 2 * pi / 3)),
                       child: Container(
                         width: midGlowSize,
                         height: midGlowSize,
@@ -3108,7 +3157,12 @@ class _LoginDialogState extends ConsumerState<LoginAccountView> {
     if (!PlatformUtils.isDesktop) {
       return;
     }
-    for (final mainWindowId in const [0, 1, 2, 3, 4]) {
+    try {
+      await DesktopMultiWindow.invokeMethod(0, 'auth-updated');
+      return;
+    } catch (_) {}
+
+    for (final mainWindowId in const [1, 2, 3, 4, 5, 6, 7, 8]) {
       try {
         await DesktopMultiWindow.invokeMethod(mainWindowId, 'auth-updated');
         return;
