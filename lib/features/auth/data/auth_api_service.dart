@@ -89,6 +89,33 @@ class AuthApiService with InfraLogger {
     return '$baseUrl/nodes/$token/subscribe/$type';
   }
 
+  /// 验证 Token 是否有效
+  /// 返回 true 表示有效，false 表示无效或过期
+  Future<bool> validateToken(String token) async {
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/nodes/$token',
+        options: Options(
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
+      final json = response.data;
+      if (json == null) return false;
+      // ret == 1 表示成功，其他表示失败（如 token 无效）
+      return json['ret'] == 1;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+        return false;
+      }
+      // 网络错误时不确定 token 是否有效，保守起见返回 true
+      // 让后续请求自己处理错误
+      return true;
+    } catch (e) {
+      loggy.error('validate token error', e);
+      return true;
+    }
+  }
+
   /// 获取全部节点数据
   Future<Map<String, dynamic>> getNodes(String token, {String? fallbackErrorMessage}) async {
     final response = await _dio.get<Map<String, dynamic>>('/nodes/$token');

@@ -63,6 +63,28 @@ class AuthNotifier extends StateNotifier<AuthState> with InfraLogger {
     _applyAuthStateFromPreferences();
   }
 
+  /// 验证存储的 Token 是否仍然有效，并确保订阅配置已加载
+  Future<void> validateStoredToken() async {
+    final token = _prefs.getString(_tokenKey);
+    if (token == null || token.isEmpty) {
+      return; // 未登录状态，无需验证
+    }
+
+    loggy.debug('validating stored token...');
+    final isValid = await _api.validateToken(token);
+    
+    if (!isValid) {
+      loggy.warning('stored token is invalid or expired, clearing auth state');
+      await _clearAuth();
+      state = const AuthState();
+    } else {
+      loggy.debug('stored token is valid');
+      // Token 有效，确保订阅配置已加载
+      loggy.info('ensuring subscription profile for logged in user');
+      await ensureSubscriptionProfileForCurrentUser();
+    }
+  }
+
   /// 强制从磁盘重新加载 SharedPreferences 后恢复登录状态
   Future<void> refreshFromStorageFromDisk() async {
     await _prefs.reload();

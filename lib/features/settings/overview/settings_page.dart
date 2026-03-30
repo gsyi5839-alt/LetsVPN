@@ -181,6 +181,12 @@ class SettingsPage extends HookConsumerWidget {
                 },
               ),
             ),
+          if (!Breakpoint(context).isMobile())
+            SettingsSection(
+              title: 'Recommended Software',
+              icon: Icons.apps_rounded,
+              namedLocation: context.namedLocation('bundledSoftware'),
+            ),
           if (Breakpoint(context).isMobile()) ...[
             SettingsSection(
               title: t.pages.logs.title,
