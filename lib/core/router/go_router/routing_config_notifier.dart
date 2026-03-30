@@ -7,6 +7,7 @@ import 'package:hiddify/core/router/go_router/helper/active_breakpoint_notifier.
 import 'package:hiddify/core/router/go_router/helper/custom_transition.dart';
 import 'package:hiddify/core/router/go_router/refresh_listenable.dart';
 import 'package:hiddify/features/about/widget/about_page.dart';
+import 'package:hiddify/features/bundled_software/widget/bundled_software_page.dart';
 import 'package:hiddify/features/home/widget/free_membership_page.dart';
 import 'package:hiddify/features/home/widget/home_page.dart';
 import 'package:hiddify/features/home/widget/messages_page.dart';
@@ -254,6 +255,13 @@ class RoutingConfigNotifier extends _$RoutingConfigNotifier {
                             customTransition(TransitionType.slide, state.pageKey, const AboutPage()),
                       ),
                     ],
+                    if (!isMobileBreakpoint)
+                      GoRoute(
+                        name: 'bundledSoftware',
+                        path: '/bundled-software',
+                        pageBuilder: (_, state) =>
+                            customTransition(TransitionType.slide, state.pageKey, const BundledSoftwarePage()),
+                      ),
                   ],
                 ),
               ],
