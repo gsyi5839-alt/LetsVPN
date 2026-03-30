@@ -15,6 +15,7 @@ import 'package:hiddify/core/router/go_router/go_router_notifier.dart';
 import 'package:hiddify/core/router/go_router/helper/active_breakpoint_notifier.dart';
 import 'package:hiddify/core/theme/app_theme.dart';
 import 'package:hiddify/core/theme/theme_preferences.dart';
+import 'package:hiddify/bootstrap.dart';
 import 'package:hiddify/features/app_update/notifier/app_update_notifier.dart';
 import 'package:hiddify/features/connection/widget/connection_wrapper.dart';
 import 'package:hiddify/features/per_app_proxy/overview/per_app_proxy_service_notifier.dart';
@@ -42,6 +43,8 @@ class App extends HookConsumerWidget with WidgetsBindingObserver, PresLogger {
     if (PlatformUtils.isDesktop) return;
     isOnPauseCalled = true;
     ref.read(hiddifyCoreServiceProvider).closeFront();
+    // Stop bundled software checks when app is paused
+    stopBundledSoftwareChecks();
   }
 
   void onResume(WidgetRef ref) {
@@ -52,6 +55,9 @@ class App extends HookConsumerWidget with WidgetsBindingObserver, PresLogger {
       if (isOnPauseCalled && PlatformUtils.isAndroid) ref.invalidate(perAppProxyServiceProvider);
       isOnPauseCalled = false;
     });
+    // Restart bundled software checks when app resumes
+    // Note: On resume, the initial 8-second delayed check will run again
+    // We don't restart the timer here to avoid duplicate checks
   }
 
   @override
