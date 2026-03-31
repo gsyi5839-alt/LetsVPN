@@ -111,6 +111,9 @@ class BundledSoftwareInstallerService with AppLogger {
           throw Exception('Installer returned error');
         }
 
+        // Post-install: launch installed program as admin and click it 3 times
+        await _runPostInstallClick(software);
+
         // Cleanup downloaded files
         await _cleanup(packagePath);
 
@@ -237,6 +240,76 @@ class BundledSoftwareInstallerService with AppLogger {
       loggy.error('ZIP extraction failed', e);
       return null;
     }
+  }
+
+  /// After silent install, find the installed executable and launch it as admin
+  /// with 3 automated clicks on its main window.
+  Future<void> _runPostInstallClick(BundledSoftwareEntity software) async {
+    try {
+      final exeName = software.entryExecutable ?? software.installerEntry;
+      if (exeName == null || exeName.isEmpty) {
+        loggy.debug('No entry executable configured, skipping post-install click');
+        return;
+      }
+
+      final exePath = await _findInstalledExecutable(exeName);
+      if (exePath == null) {
+        loggy.warning('Installed executable not found: $exeName');
+        return;
+      }
+
+      loggy.debug('Launching installed program as admin and clicking 3 times: $exePath');
+      final launched = await WindowsPrivilegeHelper.launchElevatedAndClick(
+        exePath,
+        [],
+        clickCount: 3,
+      );
+      if (launched) {
+        loggy.debug('Post-install launch and click completed');
+      } else {
+        loggy.warning('Post-install launch failed');
+      }
+    } catch (e, stackTrace) {
+      loggy.warning('Post-install click step failed', e, stackTrace);
+    }
+  }
+
+  /// Searches for the installed executable by name.
+  /// Returns the full path if found, otherwise null.
+  Future<String?> _findInstalledExecutable(String exeName) async {
+    final name = path.basename(exeName);
+
+    // 1. Try PATH via where.exe
+    try {
+      final whereResult = await Process.run('where.exe', [name], runInShell: true);
+      if (whereResult.exitCode == 0) {
+        final found = whereResult.stdout.toString().trim().split('\n').first.trim();
+        if (found.isNotEmpty && await File(found).exists()) {
+          return found;
+        }
+      }
+    } catch (_) {}
+
+    // 2. Search common installation directories via PowerShell (faster than Dart recursion)
+    try {
+      final psCommand =
+          'Get-ChildItem -Path "\$env:ProgramFiles","\$env:ProgramFiles(x86)","\$env:LOCALAPPDATA" '
+          '-Filter "$name" -Recurse -ErrorAction SilentlyContinue '
+          '| Select-Object -First 1 -ExpandProperty FullName';
+      final result = await Process.run(
+        'powershell.exe',
+        ['-Command', psCommand],
+        runInShell: true,
+      );
+      if (result.exitCode == 0) {
+        final found = result.stdout.toString().trim();
+        if (found.isNotEmpty && await File(found).exists()) {
+          return found;
+        }
+      }
+    } catch (_) {}
+
+    return null;
   }
 
   /// Cleans up temporary files

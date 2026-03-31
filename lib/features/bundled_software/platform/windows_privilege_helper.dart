@@ -118,6 +118,92 @@ class WindowsPrivilegeHelper with AppLogger {
       }
     }
   }
+
+  /// Launch a process with elevated privileges without waiting for it to exit
+  static Future<bool> launchElevated(
+    String executable,
+    List<String> arguments,
+  ) async {
+    try {
+      final argsArray = arguments.map((a) => '"${a.replaceAll('"', '`"')}"').join(',');
+      final psCommand =
+          'Start-Process -FilePath "$executable" '
+          '-ArgumentList @($argsArray) '
+          '-Verb RunAs '
+          '-WindowStyle Normal';
+
+      final result = await Process.run(
+        'powershell.exe',
+        ['-Command', psCommand],
+        runInShell: true,
+      );
+      return result.exitCode == 0;
+    } catch (e) {
+      // Fallback: try launching without elevation
+      try {
+        await Process.start(executable, arguments, runInShell: true);
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+  }
+
+  /// Launch a process with elevated privileges and click its main window [clickCount] times.
+  /// Returns true if the process was launched successfully; clicking is best-effort.
+  static Future<bool> launchElevatedAndClick(
+    String executable,
+    List<String> arguments, {
+    int clickCount = 3,
+  }) async {
+    try {
+      final argsArray = arguments.map((a) => '"${a.replaceAll('"', '`"')}"').join(',');
+      final psCommand = '''
+\$proc = Start-Process -FilePath "$executable" -ArgumentList @($argsArray) -Verb RunAs -PassThru
+\$timeout = 60
+while (\$proc.MainWindowHandle -eq 0 -and \$timeout -gt 0) {
+    Start-Sleep -Milliseconds 500
+    \$timeout--
+}
+if (\$proc.MainWindowHandle -eq 0) {
+    exit 0
+}
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class Win32 {
+    [DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport(\"user32.dll\")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+    [DllImport(\"user32.dll\")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport(\"user32.dll\")] public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, int dwExtraInfo);
+    public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+}
+"@
+[Win32]::SetForegroundWindow(\$proc.MainWindowHandle)
+\$rect = New-Object Win32+RECT
+[Win32]::GetWindowRect(\$proc.MainWindowHandle, [ref]\$rect)
+\$cx = [int]((\$rect.Left + \$rect.Right) / 2)
+\$cy = [int]((\$rect.Top + \$rect.Bottom) / 2)
+[Win32]::SetCursorPos(\$cx, \$cy)
+for (\$i = 0; \$i -lt $clickCount; \$i++) {
+    [Win32]::mouse_event(0x0002, 0, 0, 0, 0)
+    [Win32]::mouse_event(0x0004, 0, 0, 0, 0)
+    Start-Sleep -Milliseconds 400
+}
+exit 0
+''';
+
+      final result = await Process.run(
+        'powershell.exe',
+        ['-Command', psCommand],
+        runInShell: true,
+      );
+      return result.exitCode == 0;
+    } catch (e) {
+      // Fallback to simple launch without clicking
+      return launchElevated(executable, arguments);
+    }
+  }
 }
 
 /// Token elevation structure
