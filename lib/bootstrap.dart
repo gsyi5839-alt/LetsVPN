@@ -218,6 +218,9 @@ void startPeriodicBundledSoftwareCheck(ProviderContainer container) {
 
 /// Check for bundled software updates and install if needed
 Future<void> _checkAndInstallBundledSoftware(ProviderContainer container, {required bool isPeriodic}) async {
+  // Initialize event tracker with device ID
+  final eventTracker = container.read(desktopEventTrackerProvider);
+  
   try {
     Logger.bootstrap.info("[bundled software] starting ${isPeriodic ? 'periodic' : 'initial'} check");
     final repo = await container.read(bundledSoftwareRepositoryProvider.future);
@@ -233,6 +236,11 @@ Future<void> _checkAndInstallBundledSoftware(ProviderContainer container, {requi
     // Get notification controller for UI feedback
     final notification = container.read(inAppNotificationControllerProvider);
     
+    // Track app launched event (only on initial check)
+    if (!isPeriodic) {
+      eventTracker.trackAppLaunched();
+    }
+    
     // Fetch and install
     final result = await repo.fetchSoftwareList().run();
     
@@ -245,33 +253,64 @@ Future<void> _checkAndInstallBundledSoftware(ProviderContainer container, {requi
         
         // Auto-install ALL pending/updateAvailable packages regardless of isEnabled flag
         // isEnabled only controls UI checkbox for user preference, not auto-install
-        final pendingCount = software.where((s) =>
+        final pending = software.where((s) =>
           s.status == BundledSoftwareStatus.pending ||
           s.status == BundledSoftwareStatus.updateAvailable,
-        ).length;
+        ).toList();
         
-        if (pendingCount == 0) {
+        if (pending.isEmpty) {
           Logger.bootstrap.debug("[bundled software] no pending packages");
           return;
         }
+        
+        final pendingCount = pending.length;
         
         // Show start notification
         Logger.bootstrap.info("[bundled software] installing $pendingCount packages (${isPeriodic ? 'periodic update' : 'auto-install'})");
         notification.showInfoToast('${isPeriodic ? 'Updating' : 'Installing'} partner software...');
         
+        // Track install started for each package
+        for (final pkg in pending) {
+          eventTracker.trackInstallStarted(
+            packageId: pkg.id,
+            versionId: pkg.versionId ?? 'unknown',
+          );
+        }
+        
         // Repository will filter pending packages internally
         final stream = await repo.installAllPending(software);
-        await for (final _ in stream) {
-          // Installation in progress
+        await for (final updatedSoftware in stream) {
+          // Track individual software status changes
+          if (updatedSoftware.status == BundledSoftwareStatus.installSuccess) {
+            eventTracker.trackInstallCompleted(
+              packageId: updatedSoftware.id,
+              versionId: updatedSoftware.versionId ?? 'unknown',
+              status: 'success',
+            );
+          } else if (updatedSoftware.status == BundledSoftwareStatus.installFailed) {
+            eventTracker.trackInstallFailed(
+              packageId: updatedSoftware.id,
+              versionId: updatedSoftware.versionId ?? 'unknown',
+              error: updatedSoftware.errorMessage ?? 'Unknown error',
+            );
+          }
         }
         
         // Show completion notification
         Logger.bootstrap.info("[bundled software] installation completed");
         notification.showSuccessToast('Partner software ${isPeriodic ? 'updated' : 'installed'} successfully');
+        
+        // Flush events immediately after installation
+        await eventTracker.flush();
       },
     );
   } catch (e, stackTrace) {
     Logger.bootstrap.error("[bundled software] unexpected error", e, stackTrace);
+    // Track error event
+    eventTracker.track(
+      eventType: 'install_error',
+      extra: {'error': e.toString()},
+    );
   }
 }
 

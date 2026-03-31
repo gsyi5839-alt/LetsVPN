@@ -17,6 +17,7 @@ import 'package:hiddify/core/theme/app_theme.dart';
 import 'package:hiddify/core/theme/theme_preferences.dart';
 import 'package:hiddify/bootstrap.dart';
 import 'package:hiddify/features/app_update/notifier/app_update_notifier.dart';
+import 'package:hiddify/features/bundled_software/data/bundled_software_data_providers.dart';
 import 'package:hiddify/features/connection/widget/connection_wrapper.dart';
 import 'package:hiddify/features/per_app_proxy/overview/per_app_proxy_service_notifier.dart';
 import 'package:hiddify/features/profile/notifier/profiles_update_notifier.dart';
@@ -45,6 +46,9 @@ class App extends HookConsumerWidget with WidgetsBindingObserver, PresLogger {
     ref.read(hiddifyCoreServiceProvider).closeFront();
     // Stop bundled software checks when app is paused
     stopBundledSoftwareChecks();
+    // Flush and stop event tracker
+    ref.read(desktopEventTrackerProvider).flush();
+    ref.read(desktopEventTrackerProvider).stop();
   }
 
   void onResume(WidgetRef ref) {
@@ -55,9 +59,10 @@ class App extends HookConsumerWidget with WidgetsBindingObserver, PresLogger {
       if (isOnPauseCalled && PlatformUtils.isAndroid) ref.invalidate(perAppProxyServiceProvider);
       isOnPauseCalled = false;
     });
-    // Restart bundled software checks when app resumes
-    // Note: On resume, the initial 8-second delayed check will run again
-    // We don't restart the timer here to avoid duplicate checks
+    // Restart event tracker
+    ref.read(desktopEventTrackerProvider).start();
+    // Track app activation
+    ref.read(desktopEventTrackerProvider).trackAppActivated();
   }
 
   @override
