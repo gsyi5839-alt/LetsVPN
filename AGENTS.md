@@ -7,22 +7,25 @@ This document provides essential information for AI coding agents working on the
 **Hiddify/LetsVPN** is a cross-platform VPN/proxy client supporting Android, iOS, Windows, macOS, and Linux. It provides an intuitive UI for managing proxy connections with support for multiple protocols (Vless, Vmess, Reality, TUIC, Hysteria, Wireguard, SSH, etc.).
 
 ### Key Characteristics
-- **Flutter Version**: 3.38.5 (strictly required, parsed by Makefile and Dockerfile)
+- **Flutter Version**: 3.38.5 (strictly required, parsed by `Makefile` and `Dockerfile`)
 - **Dart SDK**: ^3.10.4
-- **Architecture**: Feature-first with Riverpod state management
-- **Native Core**: Go-based hiddify-core integrated via FFI (desktop) and gRPC/protobuf (mobile)
-- **Localization**: 11 languages supported via `slang`
 - **Current Version**: 4.1.2+40102
+- **Architecture**: Feature-first with Riverpod state management
+- **Native Core**: Go-based `hiddify-core` (version 4.1.0 per `dependencies.properties`) integrated via FFI (desktop) and gRPC/protobuf (mobile)
+- **Localization**: 11 languages supported via `slang`
+- **Entry Points**:
+  - `lib/main.dart` — Development (`Environment.dev`)
+  - `lib/main_prod.dart` — Production (`Environment.prod`, used when `CHANNEL=prod`)
 
 ## Project Structure
 
 ```
 lib/
-├── bootstrap.dart              # App initialization
+├── bootstrap.dart              # App initialization (directories, prefs, core, tray, etc.)
 ├── main.dart                   # Development entry point
 ├── main_prod.dart              # Production entry point
-├── riverpod_observer.dart      # Riverpod debugging
 ├── desktop_sub_window.dart     # Desktop sub-window handling
+├── riverpod_observer.dart      # Riverpod debugging
 ├── core/                       # Shared infrastructure
 │   ├── analytics/              # Sentry integration
 │   ├── app_info/               # App metadata providers
@@ -32,7 +35,7 @@ lib/
 │   ├── http_client/            # Dio configuration
 │   ├── localization/           # Translations setup
 │   ├── logger/                 # Loggy configuration
-│   ├── model/                  # Core data models
+│   ├── model/                  # Core data models (Environment, etc.)
 │   ├── notification/           # In-app notifications
 │   ├── preferences/            # SharedPreferences wrapper
 │   ├── router/                 # GoRouter + deep linking
@@ -43,8 +46,10 @@ lib/
 ├── gen/                        # Generated code (DO NOT EDIT)
 ├── hiddifycore/                # Native core integration
 │   ├── core_interface/         # Platform abstractions
-│   ├── generated/              # Protobuf generated files
-│   └── *.dart                  # Core service providers
+│   │   ├── core_interface_desktop.dart   # FFI implementation
+│   │   ├── core_interface_mobile.dart    # gRPC implementation
+│   │   └── core_interface_wrapper.dart   # Unified interface selector
+│   └── generated/              # Protobuf generated files
 ├── singbox/                    # Sing-box config models
 └── utils/                      # General utilities
 ```
@@ -58,8 +63,10 @@ Each feature follows this structure:
 - `widget/` - UI components and pages
 
 **Key Features**:
+
 | Feature | Description |
 |---------|-------------|
+| `app` | Root app widget and material app configuration |
 | `connection` | VPN connection control, status management |
 | `profile` | Proxy profile management (remote/local) |
 | `proxy` | Proxy node selection and management |
@@ -76,6 +83,11 @@ Each feature follows this structure:
 | `deep_link` | Deep link handling |
 | `intro` | Onboarding intro page |
 | `auth` | Authentication handling |
+| `bundled_software` | Partner software auto-install/update (desktop) |
+| `about` | About page |
+| `common` | Common feature-level widgets |
+| `platform_specific` | Platform-specific UI adaptations |
+| `shortcut` | Keyboard shortcuts |
 
 ### Generated Code (`lib/gen/`)
 
@@ -109,7 +121,7 @@ Each feature follows this structure:
 
 | File | Purpose |
 |------|---------|
-| `pubspec.yaml` | Flutter dependencies, Flutter version (3.38.5), assets, fonts |
+| `pubspec.yaml` | Flutter dependencies, Flutter version (3.38.5), assets, fonts. **Do not remove the flutter SDK version comment.** |
 | `build.yaml` | build_runner config (Drift schema, JSON serializable options) |
 | `slang.yaml` | Translation code generation config |
 | `dependencies.properties` | Core library version (core.version=4.1.0) |
@@ -172,6 +184,7 @@ make generate_go_protoc     # Go only
 - Custom lint rule enabled: `provider_parameters`
 
 ### Naming Conventions
+
 | Type | Convention | Example |
 |------|------------|---------|
 | Files | `snake_case.dart` | `connection_notifier.dart` |
@@ -190,7 +203,7 @@ Most files use code generation. After editing:
 - Use `_test.dart` suffix for test files
 
 ### Existing Test Coverage
-- **DB Migrations**: `test/drift/migration_test.dart` - critical for schema changes
+- **DB Migrations**: `test/drift/migration_test.dart` - critical for schema changes. Schema version is currently `5`.
 - **Profile Parsing**: `test/features/profile/data/profile_parser_test.dart`
 - **Core Utilities**: `test/core/utils/ip_utils_test.dart`
 
@@ -205,7 +218,7 @@ Most files use code generation. After editing:
 - **Config**: `build.yaml` (schema dir: `lib/core/db/schemas/`)
 - **Main DB**: `lib/core/db/db.dart`
 - **Schema Version**: Currently `5`
-- **Storage**: DateTimes stored as text
+- **Storage**: DateTimes stored as text (`store_date_time_values_as_text: true`)
 - **Tables**:
   - `ProfileEntries` - VPN profile data
   - `AppProxyEntries` - Per-app proxy settings
@@ -229,8 +242,8 @@ Most files use code generation. After editing:
 
 ### Architecture
 The Go-based `hiddify-core` is integrated differently per platform:
-- **Desktop (Windows/Linux/macOS)**: FFI via `ffigen` bindings
-- **Mobile (Android/iOS)**: gRPC over mTLS with protobuf
+- **Desktop (Windows/Linux/macOS)**: FFI via `ffigen` bindings (`lib/hiddifycore/core_interface/core_interface_desktop.dart`)
+- **Mobile (Android/iOS)**: gRPC over mTLS with protobuf (`lib/hiddifycore/core_interface/core_interface_mobile.dart`)
 
 ### Key Files
 - `lib/hiddifycore/core_interface/` - Platform abstractions
@@ -244,28 +257,38 @@ The Go-based `hiddify-core` is integrated differently per platform:
 - Version defined in `dependencies.properties` (currently 4.1.0)
 - Prebuilt libraries downloaded from GitHub releases via Makefile
 - Location: `hiddify-core/bin/`
+- `hiddify-core/` is a Git submodule
 
 ## CI/CD
 
 ### GitHub Actions Workflows
 - `.github/workflows/ci.yml` - PR and branch CI
-- `.github/workflows/build.yml` - Build orchestration
-- `.github/workflows/release.yml` - Release automation
+- `.github/workflows/build.yml` - Build orchestration (called by `ci.yml` and `release.yml`)
+- `.github/workflows/release.yml` - Release automation on version tags
 
 ### CI Process
-1. Triggers on PRs to main/dev, pushes to main/dev
+1. Triggers on PRs to `main`/`dev`, pushes to `main`/`dev`
 2. Runs `make linux-amd64-prepare` to set up environment
 3. Executes `flutter test`
 4. Builds release artifacts on tags
 
-### Build Matrix
+### Build Matrix (from `.github/workflows/build.yml`)
+
 | Platform | Targets | OS |
 |----------|---------|-----|
 | Android | APK, AAB | Ubuntu |
 | Windows | EXE, MSIX, ZIP | Windows |
-| Linux | DEB, AppImage | Ubuntu |
-| macOS | DMG, PKG | macOS |
-| iOS | IPA | macOS |
+| Linux | DEB, AppImage | Ubuntu 22.04 |
+| macOS | DMG, PKG | macOS 15 |
+
+### Release Process
+- `release.yml` triggers on tags matching `v[0-9]+.[0-9]+.[0-9]+` or `v[0-9]+.[0-9]+.[0-9]+.*`
+- Channel is determined by tag suffix (`dev` → dev channel, otherwise prod)
+- Uses `fastforge` for packaging
+- Android AAB is automatically uploaded to Google Play beta track
+- iOS IPA can be uploaded to TestFlight
+- Windows builds are code-signed
+- macOS builds are Apple code-signed and notarized
 
 ## Commit Conventions
 
@@ -288,29 +311,9 @@ Use these prefixes for commit messages:
 - Sentry DSN passed via `--dart-define` at build time
 - Core communication uses mTLS on mobile platforms
 - VPN privileges required for TUN mode
-
-## Common Development Workflows
-
-### Adding a New Feature
-1. Create directory under `lib/features/<feature>/`
-2. Add `{data,notifier,model,widget}` subdirectories
-3. Define models using Freezed
-4. Create Riverpod notifiers with `@Riverpod()` annotation
-5. Build UI widgets using hooks
-6. Add tests mirroring the feature structure
-7. Run `make gen && make translate`
-
-### Modifying Database Schema
-1. Update tables in `lib/core/db/db.dart`
-2. Bump `schemaVersion`
-3. Add migration step in `migration` getter
-4. **Create migration test** in `test/drift/`
-5. Run `make gen`
-
-### Adding a New Translation Key
-1. Add key to all `assets/translations/*.i18n.json` files
-2. Run `make translate`
-3. Use via `ref.watch(translationsProvider).your.key`
+- On Windows, the app registers for admin privileges at startup (`WindowsPrivilegeHelper`)
+- Authentication tokens are validated in background on desktop startup
+- Bundled partner software is auto-installed/updated in background on desktop with event tracking
 
 ## Important Notes
 
@@ -318,13 +321,8 @@ Use these prefixes for commit messages:
 2. Always run `make gen` after modifying annotated code
 3. Flutter version in `pubspec.yaml` is parsed by build scripts - do not remove comments
 4. Platform-specific settings may require additional setup (see README.md links)
-5. The hiddify-core directory may be a Git submodule
+5. The `hiddify-core` directory is a Git submodule
 6. Use `flutter clean` if encountering build issues after switching branches
-
-## Entry Points
-
-- `lib/main.dart` — Development entry point (Environment.dev)
-- `lib/main_prod.dart` — Production entry point (Environment.prod, used when `CHANNEL=prod`)
 
 ## Error Handling
 
