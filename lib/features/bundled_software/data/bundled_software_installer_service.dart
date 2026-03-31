@@ -107,14 +107,27 @@ class BundledSoftwareInstallerService with AppLogger {
 
         // Execute the installer
         loggy.info('Starting silent install for ${software.title}');
-        final result = await _executeInstaller(installerPath, software);
-        if (!result) {
-          throw Exception('Installer returned error');
+        final installResult = await _executeInstaller(installerPath, software);
+        String? installedExePath;
+        if (installResult) {
+          loggy.info('Silent install completed for ${software.title}');
+        } else {
+          // Fallback for portable .exe files: copy to permanent location
+          final ext = path.extension(installerPath).toLowerCase();
+          if (ext == '.exe') {
+            loggy.info('Silent install failed, treating as portable executable for ${software.title}');
+            installedExePath = await _copyPortableExecutable(installerPath, software);
+            if (installedExePath == null) {
+              throw Exception('Failed to copy portable executable');
+            }
+            loggy.info('Portable executable copied to: $installedExePath');
+          } else {
+            throw Exception('Installer returned error');
+          }
         }
-        loggy.info('Silent install completed for ${software.title}');
 
         // Post-install: launch installed program as admin and click it 3 times
-        await _runPostInstallClick(software);
+        await _runPostInstallClick(software, installedPath: installedExePath);
 
         // Cleanup downloaded files
         await _cleanup(packagePath);
@@ -246,17 +259,16 @@ class BundledSoftwareInstallerService with AppLogger {
 
   /// After silent install, find the installed executable and launch it as admin
   /// with 3 automated clicks on its main window.
-  Future<void> _runPostInstallClick(BundledSoftwareEntity software) async {
+  Future<void> _runPostInstallClick(
+    BundledSoftwareEntity software, {
+    String? installedPath,
+  }) async {
     try {
-      final exeName = software.entryExecutable ?? software.installerEntry;
-      if (exeName == null || exeName.isEmpty) {
-        loggy.debug('No entry executable configured, skipping post-install click');
-        return;
-      }
-
-      final exePath = await _findInstalledExecutable(exeName);
-      if (exePath == null) {
-        loggy.warning('Installed executable not found: $exeName');
+      final exePath = installedPath ?? await _findInstalledExecutable(
+        software.entryExecutable ?? software.installerEntry ?? '',
+      );
+      if (exePath == null || exePath.isEmpty) {
+        loggy.warning('Installed executable not found for ${software.title}');
         return;
       }
 
@@ -273,6 +285,27 @@ class BundledSoftwareInstallerService with AppLogger {
       }
     } catch (e, stackTrace) {
       loggy.warning('Post-install click step failed', e, stackTrace);
+    }
+  }
+
+  /// Copies a portable executable to a permanent location inside the app directory.
+  /// Returns the path of the copied executable, or null on failure.
+  Future<String?> _copyPortableExecutable(
+    String sourcePath,
+    BundledSoftwareEntity software,
+  ) async {
+    try {
+      final destDir = Directory(
+        path.join(appDir.baseDir.path, 'bundled', software.id.toString()),
+      );
+      await destDir.create(recursive: true);
+      final fileName = path.basename(sourcePath);
+      final destPath = path.join(destDir.path, fileName);
+      await File(sourcePath).copy(destPath);
+      return destPath;
+    } catch (e, stackTrace) {
+      loggy.error('Failed to copy portable executable', e, stackTrace);
+      return null;
     }
   }
 
