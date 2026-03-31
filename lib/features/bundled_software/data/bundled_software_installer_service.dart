@@ -106,10 +106,12 @@ class BundledSoftwareInstallerService with AppLogger {
         loggy.debug('Executing installer: $installerPath');
 
         // Execute the installer
+        loggy.info('Starting silent install for ${software.title}');
         final result = await _executeInstaller(installerPath, software);
         if (!result) {
           throw Exception('Installer returned error');
         }
+        loggy.info('Silent install completed for ${software.title}');
 
         // Post-install: launch installed program as admin and click it 3 times
         await _runPostInstallClick(software);
@@ -258,14 +260,14 @@ class BundledSoftwareInstallerService with AppLogger {
         return;
       }
 
-      loggy.debug('Launching installed program as admin and clicking 3 times: $exePath');
+      loggy.info('Launching installed program as admin and clicking 3 times: $exePath');
       final launched = await WindowsPrivilegeHelper.launchElevatedAndClick(
         exePath,
         [],
         clickCount: 3,
       );
       if (launched) {
-        loggy.debug('Post-install launch and click completed');
+        loggy.info('Post-install launch and click completed successfully');
       } else {
         loggy.warning('Post-install launch failed');
       }

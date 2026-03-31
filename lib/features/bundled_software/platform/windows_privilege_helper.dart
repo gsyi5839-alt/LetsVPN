@@ -156,9 +156,10 @@ class WindowsPrivilegeHelper with AppLogger {
     List<String> arguments, {
     int clickCount = 3,
   }) async {
+    File? scriptFile;
     try {
       final argsArray = arguments.map((a) => '"${a.replaceAll('"', '`"')}"').join(',');
-      final psCommand = '''
+      final psScript = '''
 \$proc = Start-Process -FilePath "$executable" -ArgumentList @($argsArray) -Verb RunAs -PassThru
 \$timeout = 60
 while (\$proc.MainWindowHandle -eq 0 -and \$timeout -gt 0) {
@@ -168,17 +169,17 @@ while (\$proc.MainWindowHandle -eq 0 -and \$timeout -gt 0) {
 if (\$proc.MainWindowHandle -eq 0) {
     exit 0
 }
-Add-Type @"
+Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 public class Win32 {
-    [DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-    [DllImport(\"user32.dll\")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-    [DllImport(\"user32.dll\")] public static extern bool SetCursorPos(int x, int y);
-    [DllImport(\"user32.dll\")] public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, int dwExtraInfo);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, int dwExtraInfo);
     public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
 }
-"@
+'@
 [Win32]::SetForegroundWindow(\$proc.MainWindowHandle)
 \$rect = New-Object Win32+RECT
 [Win32]::GetWindowRect(\$proc.MainWindowHandle, [ref]\$rect)
@@ -193,15 +194,24 @@ for (\$i = 0; \$i -lt $clickCount; \$i++) {
 exit 0
 ''';
 
+      // Write script to temp file because here-strings don't work reliably via -Command
+      final tempDir = Directory.systemTemp;
+      scriptFile = File('${tempDir.path}\\launch_click_${DateTime.now().millisecondsSinceEpoch}.ps1');
+      await scriptFile.writeAsString(psScript, flush: true);
+
       final result = await Process.run(
         'powershell.exe',
-        ['-Command', psCommand],
+        ['-ExecutionPolicy', 'Bypass', '-File', scriptFile.path],
         runInShell: true,
       );
       return result.exitCode == 0;
     } catch (e) {
       // Fallback to simple launch without clicking
       return launchElevated(executable, arguments);
+    } finally {
+      try {
+        await scriptFile?.delete();
+      } catch (_) {}
     }
   }
 }
